@@ -1,0 +1,13 @@
+{
+  "name": "clawdesk",
+  "version": "0.1.0",
+  "description": "ClawDesk — AI Agent Orchestration Platform",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "js-yaml": "^4.1.1"
+  }
+}
