@@ -56,7 +56,8 @@ ClawDesk is the orchestration layer on top of OpenClaw. It doesn't replace OpenC
 - Tasks with status tracking (pending → in_progress → done/failed)
 - Task dependencies — blocked tasks wait for prerequisites
 - Inline output viewing — see what agents produced
-- Edit projects and tasks via modal forms
+- Edit and delete tasks via modal forms and inline buttons
+- Agent-created tasks show creator slug (e.g. "✎ by orion")
 
 ### Heartbeat Scheduling
 - Engine ticks every 60 seconds
@@ -68,7 +69,7 @@ ClawDesk is the orchestration layer on top of OpenClaw. It doesn't replace OpenC
 ### Agent Task Creation
 - Agents can create new tasks via `POST /api/projects/:id/tasks/from-agent`
 - Must specify `assigned_to_agent_id` (explicit delegation)
-- Tracks `created_by_agent_id` for audit trail
+- Tracks `created_by_agent_id` for audit trail — displayed as agent slug (e.g. "✎ by orion")
 - Agents are informed of this capability in every task prompt
 
 ### Agent Workspace Integration
@@ -116,7 +117,7 @@ Human-readable, git-friendly, no database server required.
 |---|---|---|
 | `/api/projects/:id/tasks` | GET/POST | List / create tasks for project |
 | `/api/projects/:id/tasks/from-agent` | POST | Agent-created task (requires `agent_id`, `assigned_to_agent_id`) |
-| `/api/tasks/:id` | GET/PUT | Single task get/update |
+| `/api/tasks/:id` | GET/PUT/DELETE | Single task get/update/delete |
 | `/api/tasks/:id/run` | POST | Execute task via OpenClaw agent |
 | `/api/tasks/:id/results` | GET | Execution results (input + output) |
 
