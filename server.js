@@ -509,6 +509,17 @@ app.put('/api/tasks/:id', (req, res) => {
   const a = loadYaml('agents.yaml').find(x => x.id === t.assigned_agent_id);
   res.json({ ...t, agent_name: a?.name, openclaw_agent_id: a?.openclaw_agent_id });
 });
+app.delete('/api/tasks/:id', (req, res) => {
+  const tasks = loadYaml('tasks.yaml');
+  const idx = tasks.findIndex(x => x.id === +req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'not found' });
+  tasks.splice(idx, 1);
+  saveYaml('tasks.yaml', tasks);
+  // Also clean up task results
+  const results = loadYaml('task_results.yaml').filter(r => r.task_id !== +req.params.id);
+  saveYaml('task_results.yaml', results);
+  res.json({ ok: true });
+});
 app.get('/api/tasks/:id/results', (req, res) => { res.json(loadYaml('task_results.yaml').filter(r => r.task_id === +req.params.id).sort((a, b) => b.id - a.id)); });
 app.post('/api/tasks/:id/run', async (req, res) => {
   const task = loadYaml('tasks.yaml').find(x => x.id === +req.params.id);

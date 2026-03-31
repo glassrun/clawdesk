@@ -342,6 +342,7 @@ async function loadProjects() {
             <button class="inline-btn" onclick="runTask(${t.id})" ${!t.assigned_agent_id?'disabled style="opacity:.4"':''}>▶ Run</button>
             <button class="inline-btn" onclick="toggleResults(${t.id})">📄 Output</button>
             <button class="inline-btn" onclick="editTask(${t.id},${p.id})">✏️</button>
+            <button class="inline-btn" onclick="deleteTask(${t.id},${p.id})" title="Delete">🗑️</button>
             <select onchange="updateTaskStatus(${t.id},this.value)" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 6px;border-radius:4px;font-size:12px">
               <option ${t.status==='pending'?'selected':''} value="pending">pending</option>
               <option ${t.status==='in_progress'?'selected':''} value="in_progress">in progress</option>
@@ -382,6 +383,7 @@ async function editProject(id) {
 }
 
 async function deleteProject(id) { if (!confirm('Delete this project and all tasks?')) return; await api('/api/projects/' + id, { method: 'DELETE' }); loadProjects(); }
+async function deleteTask(id, projectId) { if (!confirm('Delete this task?')) return; await api('/api/tasks/' + id, { method: 'DELETE' }); loadProjectDetail(projectId); }
 
 async function editTask(taskId, projectId) {
   const detail = await api('/api/projects/' + projectId);
