@@ -93,7 +93,7 @@ tr:last-child td{border-bottom:none}
   <div id="tab-dashboard" class="tab active">
     <div class="stats" id="stats"></div>
     <h2>OpenClaw Agents</h2>
-    <table><thead><tr><th>OpenClaw ID</th><th>Name</th><th>Role</th><th>Status</th><th>Budget</th><th>Heartbeat</th></tr></thead><tbody id="dash-agents"></tbody></table>
+    <table><thead><tr><th>OpenClaw ID</th><th>Name</th><th>Status</th><th>Budget</th><th>Heartbeat</th></tr></thead><tbody id="dash-agents"></tbody></table>
     <h2 style="margin-top:24px">Projects</h2>
     <div id="dash-projects"></div>
   </div>
@@ -111,7 +111,7 @@ tr:last-child td{border-bottom:none}
       <input id="a-desc" placeholder="Job Description" style="flex:2">
       <button class="btn btn-primary" onclick="createAgent()">Add Agent</button>
     </div>
-    <table><thead><tr><th>OpenClaw ID</th><th>Name</th><th>Role</th><th>Status</th><th>Budget</th><th>Heartbeat</th><th>Actions</th></tr></thead><tbody id="agent-list"></tbody></table>
+    <table><thead><tr><th>OpenClaw ID</th><th>Name</th><th>Status</th><th>Budget</th><th>Heartbeat</th><th>Actions</th></tr></thead><tbody id="agent-list"></tbody></table>
   </div>
   <!-- PROJECTS -->
   <div id="tab-projects" class="tab">
@@ -141,7 +141,6 @@ tr:last-child td{border-bottom:none}
     <h2>Edit Agent</h2>
     <div class="form-row"><label>OpenClaw Agent ID</label><input id="ea-ocid" disabled style="opacity:.6"></div>
     <div class="form-row"><label>Name</label><input id="ea-name"></div>
-    <div class="form-row"><label>Role</label><select id="ea-role"><option>CEO</option><option>Creative</option><option>Ops</option><option>Strategy</option><option>Marketing</option><option>Sales</option><option>Finance</option></select></div>
     <div class="form-row"><label>Status</label><select id="ea-status"><option>idle</option><option>active</option><option>paused</option></select></div>
     <div class="form-row"><label>Budget Limit ($)</label><input id="ea-budget" type="number"></div>
     <div class="form-row"><label>Budget Spent ($)</label><input id="ea-spent" type="number"></div>
@@ -260,14 +259,14 @@ async function loadDashboard() {
     <div class="stat-card"><div class="label">Active Tasks</div><div class="value yellow">${d.active_tasks}</div></div>
     <div class="stat-card"><div class="label">Completed</div><div class="value green">${d.completed_tasks}</div></div>
     <div class="stat-card"><div class="label">Spend</div><div class="value">$${d.total_spent.toFixed(0)}</div></div>`;
-  document.getElementById('dash-agents').innerHTML = d.agents.map(a => `<tr><td>${ocBadge(a.openclaw_agent_id)}</td><td>${a.name}</td><td>${a.role}</td><td>${badge(a.status)}</td><td>${budgetBar(a.budget_spent, a.budget_limit)}</td><td>${hbBadge(a)}</td></tr>`).join('');
+  document.getElementById('dash-agents').innerHTML = d.agents.map(a => `<tr><td>${ocBadge(a.openclaw_agent_id)}</td><td>${a.name}</td><td>${badge(a.status)}</td><td>${budgetBar(a.budget_spent, a.budget_limit)}</td><td>${hbBadge(a)}</td></tr>`).join('');
   document.getElementById('dash-projects').innerHTML = (d.projects || []).map(p => `<div class="project-card"><div class="head"><span>${p.title} ${badge(p.status)}</span><span class="progress">${p.task_done}/${p.task_total} tasks</span></div></div>`).join('') || '<div class="empty">No projects yet</div>';
 }
 
 // Agents
 async function loadAgents() {
   allAgents = await api('/api/agents');
-  document.getElementById('agent-list').innerHTML = allAgents.map(a => `<tr><td>${ocBadge(a.openclaw_agent_id)}</td><td>${a.name}</td><td>${a.role}</td><td>${badge(a.status)}</td><td>$${a.budget_limit.toFixed(0)}</td><td>${hbBadge(a)}</td><td class="actions"><button class="btn btn-sm btn-primary" onclick="editAgent(${a.id})">Edit</button><button class="btn btn-sm btn-success" onclick="triggerHeartbeat(${a.id})">♥</button><button class="btn btn-sm btn-danger" onclick="deleteAgent(${a.id})">Del</button></td></tr>`).join('') || '<tr><td colspan="7" class="empty">No agents — click Sync</td></tr>';
+  document.getElementById('agent-list').innerHTML = allAgents.map(a => `<tr><td>${ocBadge(a.openclaw_agent_id)}</td><td>${a.name}</td><td>${badge(a.status)}</td><td>$${a.budget_limit.toFixed(0)}</td><td>${hbBadge(a)}</td><td class="actions"><button class="btn btn-sm btn-primary" onclick="editAgent(${a.id})">Edit</button><button class="btn btn-sm btn-success" onclick="triggerHeartbeat(${a.id})">♥</button><button class="btn btn-sm btn-danger" onclick="deleteAgent(${a.id})">Del</button></td></tr>`).join('') || '<tr><td colspan="6" class="empty">No agents — click Sync</td></tr>';
 }
 
 async function syncAgents() {
@@ -296,14 +295,13 @@ async function editAgent(id) {
   const a = allAgents.find(x => x.id === id); if (!a) return;
   document.getElementById('ea-ocid').value = a.openclaw_agent_id;
   document.getElementById('ea-name').value = a.name;
-  document.getElementById('ea-role').value = a.role;
   document.getElementById('ea-status').value = a.status;
   document.getElementById('ea-budget').value = a.budget_limit;
   document.getElementById('ea-spent').value = a.budget_spent;
   document.getElementById('ea-hb-enabled').value = a.heartbeat_enabled ? 1 : 0;
   document.getElementById('ea-hb-interval').value = a.heartbeat_interval;
   document.getElementById('ea-save').onclick = async () => {
-    await api('/api/agents/' + id, { method: 'PUT', body: JSON.stringify({ name: document.getElementById('ea-name').value, role: document.getElementById('ea-role').value, status: document.getElementById('ea-status').value, budget_limit: +document.getElementById('ea-budget').value, budget_spent: +document.getElementById('ea-spent').value, heartbeat_enabled: +document.getElementById('ea-hb-enabled').value, heartbeat_interval: +document.getElementById('ea-hb-interval').value }) });
+    await api('/api/agents/' + id, { method: 'PUT', body: JSON.stringify({ name: document.getElementById('ea-name').value, status: document.getElementById('ea-status').value, budget_limit: +document.getElementById('ea-budget').value, budget_spent: +document.getElementById('ea-spent').value, heartbeat_enabled: +document.getElementById('ea-hb-enabled').value, heartbeat_interval: +document.getElementById('ea-hb-interval').value }) });
     closeModal('modal-agent'); loadAgents();
   };
   document.getElementById('modal-agent').classList.add('open');

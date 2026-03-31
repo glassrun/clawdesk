@@ -56,7 +56,7 @@ function createOpenClawAgent(agentId, name, workspace, opts = {}) {
     // Write identity files
     const emoji = opts.emoji || '🤖';
     const vibe = opts.vibe || 'helpful and focused';
-    fs.writeFileSync(path.join(wsDir, 'IDENTITY.md'), `# IDENTITY.md\n\n- **Name:** ${name}\n- **Role:** ${opts.role || 'Ops'}\n- **Creature:** AI agent\n- **Vibe:** ${vibe}\n- **Emoji:** ${emoji}\n`);
+    fs.writeFileSync(path.join(wsDir, 'IDENTITY.md'), `# IDENTITY.md\n\n- **Name:** ${name}\n- **Role:** ${vibe}\n- **Creature:** AI agent\n- **Vibe:** ${vibe.split('.').filter(s=>s.trim())[0].split(',').slice(0,2).map(s=>s.trim()).join(', ') || 'focused and effective'}\n- **Emoji:** ${emoji}\n`);
     fs.writeFileSync(path.join(wsDir, 'SOUL.md'), `# SOUL.md\n\nYou are ${name}. ${vibe}. Be resourceful, direct, and actually do the work — don't just say you did.\n`);
     fs.writeFileSync(path.join(wsDir, 'USER.md'), `# USER.md\n\nS is your operator. Listen carefully. Execute precisely. No filler.\n`);
 
@@ -77,7 +77,7 @@ function syncFromOpenClaw() {
       const agentIds = [...new Set(output.split('\n').map(l => l.trim()).filter(l => l.match(/^-\s+(\S+)/)).map(l => l.match(/^-\s+(\S+)/)[1]))];
       if (agentIds.length === 0 && err) return reject(new Error(`Failed: ${err.message}`));
       const agents = loadYaml('agents.yaml');
-      const known = { 'main': { name: 'Zava', role: 'CEO', heartbeat_enabled: true, heartbeat_interval: 60 }, 'project-manager': { name: 'Orion', role: 'Strategy', heartbeat_enabled: true, heartbeat_interval: 30 }, 'content-studio': { name: 'Content Studio', role: 'Creative', heartbeat_enabled: true, heartbeat_interval: 30 } };
+      const known = { 'main': { name: 'Zava', heartbeat_enabled: true, heartbeat_interval: 60 }, 'project-manager': { name: 'Orion', heartbeat_enabled: true, heartbeat_interval: 30 }, 'content-studio': { name: 'Content Studio', heartbeat_enabled: true, heartbeat_interval: 30 } };
       for (const id of agentIds) {
         const existing = agents.find(a => a.openclaw_agent_id === id);
         const k = known[id];
@@ -88,7 +88,7 @@ function syncFromOpenClaw() {
           agents.push({
             id: nextId(agents), openclaw_agent_id: id,
             name: k ? k.name : id.split('-').map(w => w[0].toUpperCase() + w.slice(1)).join(' '),
-            role: k ? k.role : 'Ops', status: 'active',
+            status: 'active',
             budget_limit: 0, budget_spent: 0,
             heartbeat_enabled: k ? k.heartbeat_enabled : false,
             heartbeat_interval: k ? k.heartbeat_interval : 30,
@@ -139,9 +139,9 @@ if (loadYaml('agents.yaml').length === 0) {
     console.log('[Seed] Fallback:', e.message);
     const now = new Date().toISOString();
     saveYaml('agents.yaml', [
-      { id: 1, openclaw_agent_id: 'main', name: 'Zava', role: 'CEO', status: 'active', budget_limit: 5000, budget_spent: 0, heartbeat_enabled: true, heartbeat_interval: 60, last_heartbeat: null, created_at: now },
-      { id: 2, openclaw_agent_id: 'project-manager', name: 'Orion', role: 'Strategy', status: 'active', budget_limit: 3000, budget_spent: 0, heartbeat_enabled: true, heartbeat_interval: 30, last_heartbeat: null, created_at: now },
-      { id: 3, openclaw_agent_id: 'content-studio', name: 'Content Studio', role: 'Creative', status: 'active', budget_limit: 2000, budget_spent: 0, heartbeat_enabled: true, heartbeat_interval: 30, last_heartbeat: null, created_at: now }
+      { id: 1, openclaw_agent_id: 'main', name: 'Zava', status: 'active', budget_limit: 5000, budget_spent: 0, heartbeat_enabled: true, heartbeat_interval: 60, last_heartbeat: null, created_at: now },
+      { id: 2, openclaw_agent_id: 'project-manager', name: 'Orion', status: 'active', budget_limit: 3000, budget_spent: 0, heartbeat_enabled: true, heartbeat_interval: 30, last_heartbeat: null, created_at: now },
+      { id: 3, openclaw_agent_id: 'content-studio', name: 'Content Studio', status: 'active', budget_limit: 2000, budget_spent: 0, heartbeat_enabled: true, heartbeat_interval: 30, last_heartbeat: null, created_at: now }
     ]);
     seed();
   });
@@ -190,13 +190,13 @@ async function executeTask(agent, task) {
   // Feature 2: Task can create an agent before execution
   if (task.creates_agent) {
     try {
-      const oc = await createOpenClawAgent(task.creates_agent, task.creates_agent, null, { role: 'Ops' });
+      const oc = await createOpenClawAgent(task.creates_agent, task.creates_agent, null, {});
       const agents = loadYaml('agents.yaml');
       if (!agents.find(a => a.openclaw_agent_id === task.creates_agent)) {
         agents.push({
           id: nextId(agents), openclaw_agent_id: task.creates_agent,
           name: task.creates_agent.split('-').map(w => w[0].toUpperCase() + w.slice(1)).join(' '),
-          role: 'Ops', status: 'active',
+          status: 'active',
           budget_limit: 0, budget_spent: 0,
           heartbeat_enabled: 1, heartbeat_interval: 30,
           last_heartbeat: null, created_at: new Date().toISOString()
@@ -325,7 +325,7 @@ app.post('/api/agents/sync', async (req, res) => {
 // Agents CRUD
 app.get('/api/agents', (req, res) => { res.json(loadYaml('agents.yaml')); });
 app.post('/api/agents', async (req, res) => {
-  const { job_title, job_description, openclaw_agent_id, name, role, status, budget_limit, heartbeat_enabled, heartbeat_interval } = req.body;
+  const { job_title, job_description, openclaw_agent_id, name, status, budget_limit, heartbeat_enabled, heartbeat_interval } = req.body;
 
   // New format: job_title only (auto-generates everything)
   const title = job_title || name;
@@ -336,8 +336,8 @@ app.post('/api/agents', async (req, res) => {
   try {
     const agents = loadYaml('agents.yaml');
     if (agents.find(a => a.openclaw_agent_id === agentId)) return res.status(409).json({ error: 'Agent already exists' });
-    const oc = await createOpenClawAgent(agentId, title, null, { vibe: desc, role: 'Ops' });
-    const agent = { id: nextId(agents), openclaw_agent_id: agentId, name: title, role: role || 'Ops', status: status || 'idle', budget_limit: budget_limit || 0, budget_spent: 0, heartbeat_enabled: 1, heartbeat_interval: heartbeat_interval || 30, last_heartbeat: null, created_at: new Date().toISOString() };
+    const oc = await createOpenClawAgent(agentId, title, null, { vibe: desc });
+    const agent = { id: nextId(agents), openclaw_agent_id: agentId, name: title, status: status || 'idle', budget_limit: budget_limit || 0, budget_spent: 0, heartbeat_enabled: 1, heartbeat_interval: heartbeat_interval || 30, last_heartbeat: null, created_at: new Date().toISOString() };
     agents.push(agent);
     saveYaml('agents.yaml', agents);
     res.status(201).json({ ...agent, openclaw: oc });
@@ -348,8 +348,8 @@ app.put('/api/agents/:id', (req, res) => {
   const agents = loadYaml('agents.yaml');
   const a = agents.find(x => x.id === +req.params.id);
   if (!a) return res.status(404).json({ error: 'not found' });
-  const { name, role, status, budget_limit, budget_spent, heartbeat_enabled, heartbeat_interval } = req.body;
-  Object.assign(a, { name: name ?? a.name, role: role ?? a.role, status: status ?? a.status, budget_limit: budget_limit ?? a.budget_limit, budget_spent: budget_spent ?? a.budget_spent, heartbeat_enabled: heartbeat_enabled !== undefined ? (heartbeat_enabled ? 1 : 0) : a.heartbeat_enabled, heartbeat_interval: heartbeat_interval ?? a.heartbeat_interval });
+  const { name, status, budget_limit, budget_spent, heartbeat_enabled, heartbeat_interval } = req.body;
+  Object.assign(a, { name: name ?? a.name, status: status ?? a.status, budget_limit: budget_limit ?? a.budget_limit, budget_spent: budget_spent ?? a.budget_spent, heartbeat_enabled: heartbeat_enabled !== undefined ? (heartbeat_enabled ? 1 : 0) : a.heartbeat_enabled, heartbeat_interval: heartbeat_interval ?? a.heartbeat_interval });
   saveYaml('agents.yaml', agents);
   res.json(a);
 });
