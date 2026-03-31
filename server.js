@@ -51,9 +51,18 @@ function runOpenClawAgent(agentId, message, timeout = 120000, cwd) {
   });
 }
 
-function createOpenClawAgent(agentId, name, workspace) {
+function createOpenClawAgent(agentId, name, workspace, opts = {}) {
   return new Promise((resolve, reject) => {
     const wsDir = workspace || path.join(process.env.HOME, `.openclaw/workspace-${agentId}`);
+    fs.mkdirSync(wsDir, { recursive: true });
+
+    // Write identity files
+    const emoji = opts.emoji || '🤖';
+    const vibe = opts.vibe || 'helpful and focused';
+    fs.writeFileSync(path.join(wsDir, 'IDENTITY.md'), `# IDENTITY.md\n\n- **Name:** ${name}\n- **Role:** ${opts.role || 'Ops'}\n- **Creature:** AI agent\n- **Vibe:** ${vibe}\n- **Emoji:** ${emoji}\n`);
+    fs.writeFileSync(path.join(wsDir, 'SOUL.md'), `# SOUL.md\n\nYou are ${name}. ${vibe}. Be resourceful, direct, and actually do the work — don't just say you did.\n`);
+    fs.writeFileSync(path.join(wsDir, 'USER.md'), `# USER.md\n\nS is your operator. Listen carefully. Execute precisely. No filler.\n`);
+
     const cmd = `${OPENCLAW_CLI} agents add "${agentId}" --non-interactive --workspace "${wsDir}" --json`;
     exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
       const output = (stdout || '') + (stderr || '');
@@ -167,13 +176,19 @@ async function executeTask(agent, task) {
   message += `\nIMPORTANT: assigned_to_agent_id is REQUIRED. Pick the agent who should do the work.`;
   message += `\nTo create MULTIPLE tasks, make MULTIPLE calls - one endpoint call per task.`;
   message += `\nUse this to break down complex work into subtasks or delegate to other agents.`;
+  message += `\n`;
+  message += `\nYou can also create new agents for this project via HTTP POST:`;
+  message += `\nURL: http://localhost:3777/api/agents`;
+  message += `\nBody (JSON): { job_title: "Senior Security Engineer", job_description: "Penetration testing, audits..." }`;
+  message += `\nThis creates the agent, its workspace, identity files, and registers it with OpenClaw.`;
+  message += `\nAfter creating an agent, you can assign tasks to it using the task creation endpoint above.`;
 
   let createdAgentInfo = null;
 
   // Feature 2: Task can create an agent before execution
   if (task.creates_agent) {
     try {
-      const oc = await createOpenClawAgent(task.creates_agent, task.creates_agent);
+      const oc = await createOpenClawAgent(task.creates_agent, task.creates_agent, null, { role: 'Ops' });
       const agents = loadYaml('agents.yaml');
       if (!agents.find(a => a.openclaw_agent_id === task.creates_agent)) {
         agents.push({
@@ -181,7 +196,7 @@ async function executeTask(agent, task) {
           name: task.creates_agent.split('-').map(w => w[0].toUpperCase() + w.slice(1)).join(' '),
           role: 'Ops', status: 'active',
           budget_limit: 0, budget_spent: 0,
-          heartbeat_enabled: false, heartbeat_interval: 30,
+          heartbeat_enabled: 1, heartbeat_interval: 30,
           last_heartbeat: null, created_at: new Date().toISOString()
         });
         saveYaml('agents.yaml', agents);
@@ -308,13 +323,19 @@ app.post('/api/agents/sync', async (req, res) => {
 // Agents CRUD
 app.get('/api/agents', (req, res) => { res.json(loadYaml('agents.yaml')); });
 app.post('/api/agents', async (req, res) => {
-  const { openclaw_agent_id, name, role, status, budget_limit, heartbeat_enabled, heartbeat_interval } = req.body;
-  if (!openclaw_agent_id || !name) return res.status(400).json({ error: 'openclaw_agent_id and name required' });
+  const { job_title, job_description, openclaw_agent_id, name, role, status, budget_limit, heartbeat_enabled, heartbeat_interval } = req.body;
+
+  // New format: job_title only (auto-generates everything)
+  const title = job_title || name;
+  const desc = job_description || '';
+  const agentId = openclaw_agent_id || (title ? title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : '');
+
+  if (!title) return res.status(400).json({ error: 'job_title required' });
   try {
     const agents = loadYaml('agents.yaml');
-    if (agents.find(a => a.openclaw_agent_id === openclaw_agent_id)) return res.status(409).json({ error: 'Agent already exists' });
-    const oc = await createOpenClawAgent(openclaw_agent_id, name);
-    const agent = { id: nextId(agents), openclaw_agent_id, name, role: role || 'Ops', status: status || 'idle', budget_limit: budget_limit || 0, budget_spent: 0, heartbeat_enabled: !!heartbeat_enabled, heartbeat_interval: heartbeat_interval || 30, last_heartbeat: null, created_at: new Date().toISOString() };
+    if (agents.find(a => a.openclaw_agent_id === agentId)) return res.status(409).json({ error: 'Agent already exists' });
+    const oc = await createOpenClawAgent(agentId, title, null, { vibe: desc, role: 'Ops' });
+    const agent = { id: nextId(agents), openclaw_agent_id: agentId, name: title, role: role || 'Ops', status: status || 'idle', budget_limit: budget_limit || 0, budget_spent: 0, heartbeat_enabled: 1, heartbeat_interval: heartbeat_interval || 30, last_heartbeat: null, created_at: new Date().toISOString() };
     agents.push(agent);
     saveYaml('agents.yaml', agents);
     res.status(201).json({ ...agent, openclaw: oc });

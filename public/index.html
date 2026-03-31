@@ -107,10 +107,8 @@ tr:last-child td{border-bottom:none}
       </div>
     </div>
     <div class="form-row" style="margin-bottom:16px;flex-direction:row">
-      <input id="a-ocid" placeholder="OpenClaw Agent ID (e.g. main)">
-      <input id="a-name" placeholder="Display Name">
-      <select id="a-role"><option>CEO</option><option>Creative</option><option>Ops</option><option>Strategy</option><option>Marketing</option><option>Sales</option><option>Finance</option></select>
-      <input id="a-budget" placeholder="Budget $" type="number" min="0">
+      <input id="a-title" placeholder="Job Title (e.g. Senior Security Engineer)">
+      <input id="a-desc" placeholder="Job Description" style="flex:2">
       <button class="btn btn-primary" onclick="createAgent()">Add Agent</button>
     </div>
     <table><thead><tr><th>OpenClaw ID</th><th>Name</th><th>Role</th><th>Status</th><th>Budget</th><th>Heartbeat</th><th>Actions</th></tr></thead><tbody id="agent-list"></tbody></table>
@@ -280,16 +278,16 @@ async function syncAgents() {
 }
 
 async function createAgent() {
-  const openclaw_agent_id = document.getElementById('a-ocid').value.trim();
-  const name = document.getElementById('a-name').value.trim();
-  if (!openclaw_agent_id || !name) return;
+  const title = document.getElementById('a-title').value.trim();
+  const desc = document.getElementById('a-desc').value.trim();
+  if (!title) return;
+  const openclaw_agent_id = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   try {
     await api('/api/agents', { method: 'POST', body: JSON.stringify({
-      openclaw_agent_id, name,
-      role: document.getElementById('a-role').value,
-      budget_limit: +document.getElementById('a-budget').value || 0
+      job_title: title,
+      job_description: desc
     }) });
-    document.getElementById('a-ocid').value = ''; document.getElementById('a-name').value = ''; document.getElementById('a-budget').value = '';
+    document.getElementById('a-title').value = ''; document.getElementById('a-desc').value = '';
     loadAgents();
   } catch (e) { alert('Error: ' + (e.message || 'failed')); }
 }
