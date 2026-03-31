@@ -1,7 +1,7 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const { exec } = require('child_process');
+const { exec, execFile } = require('child_process');
 const yaml = require('js-yaml');
 
 const app = express();
@@ -30,15 +30,10 @@ function nextId(arr) { return arr.length > 0 ? Math.max(...arr.map(x => x.id)) +
 
 // ===================== OPENCLAW HELPERS =====================
 
-function runOpenClawAgent(agentId, message, timeout = 120000, cwd) {
+function runOpenClawAgent(agentId, message, timeout = 180000, cwd) {
   return new Promise((resolve, reject) => {
-    const tmpFile = path.join(DATA_DIR, `.task-msg-${Date.now()}.tmp`);
-    fs.writeFileSync(tmpFile, message);
-    const cdPrefix = cwd ? `cd '${cwd}' && ` : '';
-    const cmd = `${cdPrefix}${OPENCLAW_CLI} agent --agent "${agentId}" --message "$(cat '${tmpFile}')" --json --timeout ${Math.floor(timeout / 1000)}`;
-    exec(cmd, { timeout, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
-      // Clean up temp file
-      try { fs.unlinkSync(tmpFile); } catch {}
+    const args = ['agent', '--agent', agentId, '--message', message, '--json', '--timeout', String(Math.floor(timeout / 1000))];
+    execFile(OPENCLAW_CLI, args, { timeout, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
       let result = null;
       if (stdout && stdout.trim()) { try { result = JSON.parse(stdout.trim()); } catch {} }
       if (result && result.status === 'ok') return resolve(result);
@@ -160,7 +155,12 @@ async function executeTask(agent, task) {
 
   let message = `You are working on a project task. DO the work - do not just say "Done."`;
   message += `\nUse your tools (read, write, exec, web_search, web_fetch) to actually complete the task.`;
-  message += `\nYour working directory is the project workspace. Read and write files here.`;
+  if (project && project.workspace_path) {
+    message += `\nCRITICAL: Write ALL files to the PROJECT workspace, not your own workspace.`;
+    message += `\nProject workspace: ${project.workspace_path}`;
+    message += `\nUse the write tool with FULL paths: ${project.workspace_path}/[filename]`;
+    message += `\nUse read to check existing files in the project workspace first.`;
+  }
   message += `\nWhen finished, list every file you created with its path.`;
   message += `\n`;
   if (project) {
