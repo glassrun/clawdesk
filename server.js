@@ -70,6 +70,16 @@ function createOpenClawAgent(agentId, name, workspace, opts = {}) {
   });
 }
 
+function deleteOpenClawAgent(agentId) {
+  return new Promise((resolve, reject) => {
+    const cmd = `${OPENCLAW_CLI} agents delete "${agentId}" --json`;
+    exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
+      if (err) return reject(new Error(`Failed to delete agent: ${err.message}`));
+      resolve();
+    });
+  });
+}
+
 function syncFromOpenClaw() {
   return new Promise((resolve, reject) => {
     exec(`${OPENCLAW_CLI} agents list`, { timeout: 15000 }, (err, stdout, stderr) => {
@@ -343,13 +353,22 @@ app.put('/api/agents/:id', (req, res) => {
   saveYaml('agents.yaml', agents);
   res.json(a);
 });
-app.delete('/api/agents/:id', (req, res) => {
+app.delete('/api/agents/:id', async (req, res) => {
   const agents = loadYaml('agents.yaml');
   const idx = agents.findIndex(x => x.id === +req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'not found' });
-  agents.splice(idx, 1);
-  saveYaml('agents.yaml', agents);
-  res.json({ ok: true });
+  const agent = agents[idx];
+  try {
+    await deleteOpenClawAgent(agent.openclaw_agent_id);
+    agents.splice(idx, 1);
+    saveYaml('agents.yaml', agents);
+    // Also remove assigned tasks
+    const tasks = loadYaml('tasks.yaml').filter(t => t.assigned_agent_id !== agent.id);
+    saveYaml('tasks.yaml', tasks);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 app.post('/api/agents/:id/heartbeat', async (req, res) => {
   const agent = loadYaml('agents.yaml').find(x => x.id === +req.params.id);
