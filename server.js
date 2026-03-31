@@ -410,8 +410,9 @@ app.get('/api/projects/:id', (req, res) => {
   const allTasks = loadYaml('tasks.yaml');
   const tasks = allTasks.filter(t => t.project_id === p.id).map(t => {
     const a = agents.find(x => x.id === t.assigned_agent_id);
+    const cb = agents.find(x => x.id === t.created_by_agent_id);
     const dep = allTasks.find(d => d.id === t.dependency_id);
-    return { ...t, agent_name: a?.name, openclaw_agent_id: a?.openclaw_agent_id, dep_title: dep?.title };
+    return { ...t, agent_name: a?.name, openclaw_agent_id: a?.openclaw_agent_id, created_by_agent_slug: cb?.openclaw_agent_id, dep_title: dep?.title };
   });
   res.json({ ...p, tasks });
 });
