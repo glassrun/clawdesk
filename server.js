@@ -77,21 +77,17 @@ function syncFromOpenClaw() {
       const agentIds = [...new Set(output.split('\n').map(l => l.trim()).filter(l => l.match(/^-\s+(\S+)/)).map(l => l.match(/^-\s+(\S+)/)[1]))];
       if (agentIds.length === 0 && err) return reject(new Error(`Failed: ${err.message}`));
       const agents = loadYaml('agents.yaml');
-      const known = { 'main': { name: 'Zava', heartbeat_enabled: true, heartbeat_interval: 60 }, 'project-manager': { name: 'Orion', heartbeat_enabled: true, heartbeat_interval: 30 }, 'content-studio': { name: 'Content Studio', heartbeat_enabled: true, heartbeat_interval: 30 } };
       for (const id of agentIds) {
         const existing = agents.find(a => a.openclaw_agent_id === id);
-        const k = known[id];
         if (existing) {
           existing.status = 'active';
-          if (k) { existing.heartbeat_enabled = k.heartbeat_enabled; existing.heartbeat_interval = k.heartbeat_interval; }
         } else {
           agents.push({
             id: nextId(agents), openclaw_agent_id: id,
-            name: k ? k.name : id.split('-').map(w => w[0].toUpperCase() + w.slice(1)).join(' '),
+            name: id.split('-').map(w => w[0].toUpperCase() + w.slice(1)).join(' '),
             status: 'active',
             budget_limit: 0, budget_spent: 0,
-            heartbeat_enabled: k ? k.heartbeat_enabled : false,
-            heartbeat_interval: k ? k.heartbeat_interval : 30,
+            heartbeat_enabled: 1, heartbeat_interval: 30,
             last_heartbeat: null, created_at: new Date().toISOString()
           });
         }
@@ -136,13 +132,7 @@ function seed() {
 // Init: sync agents then seed
 if (loadYaml('agents.yaml').length === 0) {
   syncFromOpenClaw().then(r => { console.log('[Seed] Synced:', r.synced.join(', ')); seed(); }).catch(e => {
-    console.log('[Seed] Fallback:', e.message);
-    const now = new Date().toISOString();
-    saveYaml('agents.yaml', [
-      { id: 1, openclaw_agent_id: 'main', name: 'Zava', status: 'active', budget_limit: 5000, budget_spent: 0, heartbeat_enabled: true, heartbeat_interval: 60, last_heartbeat: null, created_at: now },
-      { id: 2, openclaw_agent_id: 'project-manager', name: 'Orion', status: 'active', budget_limit: 3000, budget_spent: 0, heartbeat_enabled: true, heartbeat_interval: 30, last_heartbeat: null, created_at: now },
-      { id: 3, openclaw_agent_id: 'content-studio', name: 'Content Studio', status: 'active', budget_limit: 2000, budget_spent: 0, heartbeat_enabled: true, heartbeat_interval: 30, last_heartbeat: null, created_at: now }
-    ]);
+    console.log('[Seed] Sync failed:', e.message);
     seed();
   });
 }
