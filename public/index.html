@@ -302,7 +302,7 @@ async function editAgent(id) {
   document.getElementById('ea-status').value = a.status;
   document.getElementById('ea-budget').value = a.budget_limit;
   document.getElementById('ea-spent').value = a.budget_spent;
-  document.getElementById('ea-hb-enabled').value = a.heartbeat_enabled;
+  document.getElementById('ea-hb-enabled').value = a.heartbeat_enabled ? 1 : 0;
   document.getElementById('ea-hb-interval').value = a.heartbeat_interval;
   document.getElementById('ea-save').onclick = async () => {
     await api('/api/agents/' + id, { method: 'PUT', body: JSON.stringify({ name: document.getElementById('ea-name').value, role: document.getElementById('ea-role').value, status: document.getElementById('ea-status').value, budget_limit: +document.getElementById('ea-budget').value, budget_spent: +document.getElementById('ea-spent').value, heartbeat_enabled: +document.getElementById('ea-hb-enabled').value, heartbeat_interval: +document.getElementById('ea-hb-interval').value }) });

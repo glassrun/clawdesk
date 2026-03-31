@@ -326,7 +326,7 @@ app.put('/api/agents/:id', (req, res) => {
   const a = agents.find(x => x.id === +req.params.id);
   if (!a) return res.status(404).json({ error: 'not found' });
   const { name, role, status, budget_limit, budget_spent, heartbeat_enabled, heartbeat_interval } = req.body;
-  Object.assign(a, { name: name ?? a.name, role: role ?? a.role, status: status ?? a.status, budget_limit: budget_limit ?? a.budget_limit, budget_spent: budget_spent ?? a.budget_spent, heartbeat_enabled: heartbeat_enabled ?? a.heartbeat_enabled, heartbeat_interval: heartbeat_interval ?? a.heartbeat_interval });
+  Object.assign(a, { name: name ?? a.name, role: role ?? a.role, status: status ?? a.status, budget_limit: budget_limit ?? a.budget_limit, budget_spent: budget_spent ?? a.budget_spent, heartbeat_enabled: heartbeat_enabled !== undefined ? (heartbeat_enabled ? 1 : 0) : a.heartbeat_enabled, heartbeat_interval: heartbeat_interval ?? a.heartbeat_interval });
   saveYaml('agents.yaml', agents);
   res.json(a);
 });
