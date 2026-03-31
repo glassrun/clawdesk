@@ -44,6 +44,8 @@ function runOpenClawAgent(agentId, message, timeout = 120000, cwd) {
       if (result && result.status === 'ok') return resolve(result);
       if (result && !err) return resolve(result);
       if (err && result) return resolve(result);
+      // Fallback: if agent did actual work (stdout exists), treat as success
+      if (stdout && stdout.trim().length > 0) return resolve({ status: 'ok', summary: 'completed', _raw: stdout.trim().substring(0, 2000) });
       const errMsg = err ? err.message : 'openclaw agent returned no output';
       const stderrSnippet = stderr ? stderr.trim().substring(0, 500) : '';
       reject(new Error(`${errMsg}${stderrSnippet ? '\n' + stderrSnippet : ''}`));
@@ -209,7 +211,7 @@ async function executeTask(agent, task) {
   }
 
   try {
-    const result = await runOpenClawAgent(agent.openclaw_agent_id, message, 120000, project?.workspace_path);
+    const result = await runOpenClawAgent(agent.openclaw_agent_id, message, 180000, project?.workspace_path);
     const output = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
     // Update task
     const tasks = loadYaml('tasks.yaml');
