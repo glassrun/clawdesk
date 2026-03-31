@@ -440,7 +440,7 @@ app.delete('/api/projects/:id', (req, res) => {
 // Tasks
 app.get('/api/projects/:id/tasks', (req, res) => {
   const agents = loadYaml('agents.yaml');
-  res.json(loadYaml('tasks.yaml').filter(t => t.project_id === +req.params.id).map(t => { const a = agents.find(x => x.id === t.assigned_agent_id); return { ...t, agent_name: a?.name, openclaw_agent_id: a?.openclaw_agent_id }; }));
+  res.json(loadYaml('tasks.yaml').filter(t => t.project_id === +req.params.id).map(t => { const a = agents.find(x => x.id === t.assigned_agent_id); const cb = agents.find(x => x.id === t.created_by_agent_id); return { ...t, agent_name: a?.name, openclaw_agent_id: a?.openclaw_agent_id, created_by_agent_slug: cb?.openclaw_agent_id }; }));
 });
 app.post('/api/projects/:id/tasks', (req, res) => {
   if (!loadYaml('projects.yaml').find(p => p.id === +req.params.id)) return res.status(404).json({ error: 'project not found' });

@@ -336,7 +336,7 @@ async function loadProjects() {
               ${t.agent_name ? '<span style="color:var(--dim)">· ' + t.agent_name + ' ' + ocBadge(t.openclaw_agent_id) + '</span>' : ''}
               ${t.dep_title ? '<span class="dep-tag">blocked by: ' + escHtml(t.dep_title) + '</span>' : ''}
               ${t.creates_agent ? '<span class="dep-tag" style="color:var(--purple);border-color:var(--purple)">🏗 creates: ' + escHtml(t.creates_agent) + '</span>' : ''}
-              ${t.created_by_agent_id ? '<span class="dep-tag" style="color:var(--orange);border-color:var(--orange)">✎ by agent #' + t.created_by_agent_id + '</span>' : ''}
+              ${t.created_by_agent_slug ? '<span class="dep-tag" style="color:var(--orange);border-color:var(--orange)">✎ by ' + t.created_by_agent_slug + '</span>' : ''}
             </span>
             <span id="task-status-${t.id}"></span>
             <button class="inline-btn" onclick="runTask(${t.id})" ${!t.assigned_agent_id?'disabled style="opacity:.4"':''}>▶ Run</button>
