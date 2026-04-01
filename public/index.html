@@ -32,6 +32,9 @@ tr:last-child td{border-bottom:none}
 .badge-completed,.badge-done{background:#1a2a3a;color:var(--accent)}
 .badge-ok{background:#1a3a2a;color:var(--green)}
 .badge-error{background:#3a1a1a;color:var(--red)}
+.badge-priority-high{background:#3a1a1a;color:var(--red)}
+.badge-priority-medium{background:#2a2a1a;color:var(--yellow)}
+.badge-priority-low{background:#1a2a3a;color:var(--accent)}
 .budget-bar{height:6px;background:var(--border);border-radius:3px;width:100px;display:inline-block;vertical-align:middle;margin-left:8px}
 .budget-fill{height:100%;border-radius:3px;background:var(--accent)}
 .btn{padding:6px 14px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;transition:.15s}
@@ -93,7 +96,7 @@ tr:last-child td{border-bottom:none}
   <div id="tab-dashboard" class="tab active">
     <div class="stats" id="stats"></div>
     <h2>OpenClaw Agents</h2>
-    <table><thead><tr><th>OpenClaw ID</th><th>Name</th><th>Status</th><th>Budget</th><th>Heartbeat</th></tr></thead><tbody id="dash-agents"></tbody></table>
+    <table><thead><tr><th>OpenClaw ID</th><th>Name</th><th>Status</th><th>Budget</th><th>Heartbeat</th><th>Tasks</th></tr></thead><tbody id="dash-agents"></tbody></table>
     <h2 style="margin-top:24px">Projects</h2>
     <div id="dash-projects"></div>
   </div>
@@ -176,6 +179,7 @@ tr:last-child td{border-bottom:none}
     <h2>Edit Task</h2>
     <div class="form-row"><label>Title</label><input id="et-title"></div>
     <div class="form-row"><label>Description</label><textarea id="et-desc"></textarea></div>
+    <div class="form-row"><label>Priority</label><select id="et-priority"><option value="medium">medium</option><option value="high">high</option><option value="low">low</option></select></div>
     <div class="form-row"><label>Assign to</label><select id="et-agent"><option value="">Unassigned</option></select></div>
     <div class="form-row"><label>Status</label><select id="et-status"><option value="pending">pending</option><option value="in_progress">in progress</option><option value="done">done</option><option value="failed">failed</option></select></div>
     <div class="form-row"><label>Depends on</label><select id="et-dep"><option value="">None</option></select></div>
@@ -193,6 +197,7 @@ tr:last-child td{border-bottom:none}
     <h2>Add Task</h2>
     <div class="form-row"><label>Title</label><input id="t-title"></div>
     <div class="form-row"><label>Description</label><textarea id="t-desc"></textarea></div>
+    <div class="form-row"><label>Priority</label><select id="t-priority"><option value="medium">medium</option><option value="high">high</option><option value="low">low</option></select></div>
     <div class="form-row"><label>Assign to</label><select id="t-agent"><option value="">Unassigned</option></select></div>
     <div class="form-row"><label>Depends on</label><select id="t-dep"><option value="">None</option></select></div>
     <div class="form-row"><label>Creates Agent (agent ID)</label><input id="t-creates-agent" placeholder="Leave empty if none"></div>
@@ -258,8 +263,9 @@ async function loadDashboard() {
     <div class="stat-card"><div class="label">Agents</div><div class="value accent">${d.total_agents}</div></div>
     <div class="stat-card"><div class="label">Active Tasks</div><div class="value yellow">${d.active_tasks}</div></div>
     <div class="stat-card"><div class="label">Completed</div><div class="value green">${d.completed_tasks}</div></div>
+    <div class="stat-card"><div class="label">Failed</div><div class="value" style="color:var(--red)">${d.failed_tasks || 0}</div></div>
     <div class="stat-card"><div class="label">Spend</div><div class="value">$${d.total_spent.toFixed(0)}</div></div>`;
-  document.getElementById('dash-agents').innerHTML = d.agents.map(a => `<tr><td>${ocBadge(a.openclaw_agent_id)}</td><td>${a.name}</td><td>${badge(a.status)}</td><td>${budgetBar(a.budget_spent, a.budget_limit)}</td><td>${hbBadge(a)}</td></tr>`).join('');
+  document.getElementById('dash-agents').innerHTML = d.agents.map(a => `<tr><td>${ocBadge(a.openclaw_agent_id)}</td><td>${a.name}</td><td>${badge(a.status)}</td><td>${budgetBar(a.budget_spent, a.budget_limit)}</td><td>${hbBadge(a)}</td><td style="font-size:12px;color:var(--dim)">${a.tasks_pending || 0} pending · ${a.tasks_in_progress || 0} active · <span style="color:var(--green)">${a.tasks_done || 0} done</span>${a.tasks_failed ? ' · <span style="color:var(--red)">' + a.tasks_failed + ' failed</span>' : ''}</td></tr>`).join('');
   document.getElementById('dash-projects').innerHTML = (d.projects || []).map(p => `<div class="project-card"><div class="head"><span>${p.title} ${badge(p.status)}</span><span class="progress">${p.task_done}/${p.task_total} tasks</span></div></div>`).join('') || '<div class="empty">No projects yet</div>';
 }
 
@@ -331,6 +337,7 @@ async function loadProjects() {
         ${detail.tasks.map(t => `
           <div class="task-item" id="task-${t.id}">
             ${badge(t.status)}
+            ${badge('priority-' + (t.priority || 'medium'))}
             <span style="flex:1">
               ${escHtml(t.title)}
               ${t.agent_name ? '<span style="color:var(--dim)">· ' + t.agent_name + ' ' + ocBadge(t.openclaw_agent_id) + '</span>' : ''}
@@ -394,6 +401,7 @@ async function editTask(taskId, projectId) {
   document.getElementById('et-agent').innerHTML = '<option value="">Unassigned</option>' + allAgents.map(a => `<option value="${a.id}" ${t.assigned_agent_id===a.id?'selected':''}>${a.name} (${a.openclaw_agent_id})</option>`).join('');
   document.getElementById('et-dep').innerHTML = '<option value="">None</option>' + detail.tasks.filter(x => x.id !== taskId).map(x => `<option value="${x.id}" ${t.dependency_id===x.id?'selected':''}>${x.title}</option>`).join('');
   document.getElementById('et-creates-agent').value = t.creates_agent || '';
+  document.getElementById('et-priority').value = t.priority || 'medium';
   document.getElementById('et-save').onclick = async () => {
     await api('/api/tasks/' + taskId, { method: 'PUT', body: JSON.stringify({
       title: document.getElementById('et-title').value,
@@ -401,7 +409,8 @@ async function editTask(taskId, projectId) {
       status: document.getElementById('et-status').value,
       assigned_agent_id: document.getElementById('et-agent').value || null,
       dependency_id: document.getElementById('et-dep').value || null,
-      creates_agent: document.getElementById('et-creates-agent').value.trim() || null
+      creates_agent: document.getElementById('et-creates-agent').value.trim() || null,
+      priority: document.getElementById('et-priority').value
     }) });
     closeModal('modal-task-edit'); loadProjects();
   };
@@ -411,14 +420,15 @@ async function editTask(taskId, projectId) {
 function openAddTask(projectId, tasks) {
   document.getElementById('t-agent').innerHTML = '<option value="">Unassigned</option>' + allAgents.map(a => `<option value="${a.id}">${a.name} (${a.openclaw_agent_id})</option>`).join('');
   document.getElementById('t-dep').innerHTML = '<option value="">None</option>' + tasks.map(t => `<option value="${t.id}">${t.title}</option>`).join('');
-  document.getElementById('t-title').value = ''; document.getElementById('t-desc').value = ''; document.getElementById('t-creates-agent').value = '';
+  document.getElementById('t-title').value = ''; document.getElementById('t-desc').value = ''; document.getElementById('t-creates-agent').value = ''; document.getElementById('t-priority').value = 'medium';
   document.getElementById('t-save').onclick = async () => {
     const title = document.getElementById('t-title').value.trim(); if (!title) return;
     await api('/api/projects/' + projectId + '/tasks', { method: 'POST', body: JSON.stringify({
       title, description: document.getElementById('t-desc').value,
       assigned_agent_id: document.getElementById('t-agent').value || null,
       dependency_id: document.getElementById('t-dep').value || null,
-      creates_agent: document.getElementById('t-creates-agent').value.trim() || null
+      creates_agent: document.getElementById('t-creates-agent').value.trim() || null,
+      priority: document.getElementById('t-priority').value
     }) });
     closeModal('modal-task'); loadProjects();
   };

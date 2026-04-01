@@ -10,7 +10,7 @@ const OPENCLAW_CLI = '/home/openclaw/.npm-global/bin/openclaw';
 const DATA_DIR = path.join(__dirname, 'data');
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1h' }));
 
 // ===================== YAML STORAGE =====================
 
@@ -123,17 +123,17 @@ function seed() {
   ]);
 
   let tid = 0;
-  const t = (pid, agent, title, desc, status, dep) => ({ id: ++tid, project_id: pid, assigned_agent_id: agentMap[agent] || null, title, description: desc, status, dependency_id: dep, creates_agent: null, created_by_agent_id: null, created_at: now, completed_at: status === 'done' ? now : null });
+  const t = (pid, agent, title, desc, status, dep, priority) => ({ id: ++tid, project_id: pid, assigned_agent_id: agentMap[agent] || null, title, description: desc, status, dependency_id: dep, creates_agent: null, created_by_agent_id: null, priority: priority || 'medium', created_at: now, completed_at: status === 'done' ? now : null });
   saveYaml('tasks.yaml', [
-    t(1, 'content-studio', 'Design campaign visuals', 'Create banner ads, social media graphics, and email templates', 'in_progress', null),
-    t(1, 'main', 'Review campaign strategy', 'Review and approve Q2 strategy and budget', 'pending', null),
-    t(1, 'project-manager', 'Set up tracking', 'Install analytics tracking on landing pages', 'pending', null),
-    t(1, 'content-studio', 'Write ad copy', 'Draft copy for all Q2 ad placements', 'pending', 1),
-    t(1, 'main', 'Final launch approval', 'Final review and sign-off', 'pending', 4),
-    t(2, 'project-manager', 'Audit current dashboards', 'Document existing dashboard inventory', 'done', null),
-    t(2, 'content-studio', 'Design new dashboard layout', 'Create wireframes for updated dashboards', 'in_progress', 6),
-    t(2, 'project-manager', 'Implement dashboard backend', 'Build API endpoints for new dashboard data', 'pending', 7),
-    t(2, 'main', 'Approve dashboard budget', 'Review and approve budget for rebuild', 'pending', null)
+    t(1, 'content-studio', 'Design campaign visuals', 'Create banner ads, social media graphics, and email templates', 'in_progress', null, 'high'),
+    t(1, 'main', 'Review campaign strategy', 'Review and approve Q2 strategy and budget', 'pending', null, 'medium'),
+    t(1, 'project-manager', 'Set up tracking', 'Install analytics tracking on landing pages', 'pending', null, 'medium'),
+    t(1, 'content-studio', 'Write ad copy', 'Draft copy for all Q2 ad placements', 'pending', 1, 'high'),
+    t(1, 'main', 'Final launch approval', 'Final review and sign-off', 'pending', 4, 'low'),
+    t(2, 'project-manager', 'Audit current dashboards', 'Document existing dashboard inventory', 'done', null, 'medium'),
+    t(2, 'content-studio', 'Design new dashboard layout', 'Create wireframes for updated dashboards', 'in_progress', 6, 'medium'),
+    t(2, 'project-manager', 'Implement dashboard backend', 'Build API endpoints for new dashboard data', 'pending', 7, 'high'),
+    t(2, 'main', 'Approve dashboard budget', 'Review and approve budget for rebuild', 'pending', null, 'low')
   ]);
   saveYaml('heartbeats.yaml', []);
   saveYaml('task_results.yaml', []);
@@ -245,7 +245,11 @@ async function executeTask(agent, task) {
 
 async function triggerHeartbeat(agent) {
   const tasks = loadYaml('tasks.yaml');
-  const pending = tasks.filter(t => t.assigned_agent_id === agent.id && t.status === 'pending' && (!t.dependency_id || tasks.find(d => d.id === t.dependency_id)?.status === 'done')).sort((a, b) => a.id - b.id);
+  const pending = tasks.filter(t => t.assigned_agent_id === agent.id && t.status === 'pending' && (!t.dependency_id || tasks.find(d => d.id === t.dependency_id)?.status === 'done')).sort((a, b) => {
+    const pri = { high: 0, medium: 1, low: 2 };
+    const pa = pri[a.priority] ?? 1, pb = pri[b.priority] ?? 1;
+    return pa !== pb ? pa - pb : a.id - b.id;
+  });
   if (pending.length === 0) {
     const agents = loadYaml('agents.yaml');
     const a = agents.find(x => x.id === agent.id);
@@ -396,7 +400,9 @@ app.get('/api/projects', (req, res) => {
 app.post('/api/projects', (req, res) => {
   const { title, description, workspace_path, status } = req.body;
   if (!title) return res.status(400).json({ error: 'title required' });
+  if (title.length > 200) return res.status(400).json({ error: 'title too long (max 200 chars)' });
   if (!workspace_path) return res.status(400).json({ error: 'workspace_path required' });
+  if (status && !['active', 'completed', 'failed'].includes(status)) return res.status(400).json({ error: 'status must be active, completed, or failed' });
   const projects = loadYaml('projects.yaml');
   const p = { id: nextId(projects), title, description: description || '', workspace_path: workspace_path || '', status: status || 'active', created_at: new Date().toISOString() };
   projects.push(p);
@@ -445,11 +451,13 @@ app.get('/api/projects/:id/tasks', (req, res) => {
 });
 app.post('/api/projects/:id/tasks', (req, res) => {
   if (!loadYaml('projects.yaml').find(p => p.id === +req.params.id)) return res.status(404).json({ error: 'project not found' });
-  const { assigned_agent_id, title, description, status, dependency_id, creates_agent, created_by_agent_id } = req.body;
+  const { assigned_agent_id, title, description, status, dependency_id, creates_agent, created_by_agent_id, priority } = req.body;
   if (!title) return res.status(400).json({ error: 'title required' });
+  if (title.length > 500) return res.status(400).json({ error: 'title too long (max 500 chars)' });
+  if (priority && !['low', 'medium', 'high'].includes(priority)) return res.status(400).json({ error: 'priority must be low, medium, or high' });
   const toNum = (v) => (v === '' || v === null || v === undefined) ? null : +v || null;
   const tasks = loadYaml('tasks.yaml');
-  const t = { id: nextId(tasks), project_id: +req.params.id, assigned_agent_id: toNum(assigned_agent_id), title, description: description || '', status: status || 'pending', dependency_id: toNum(dependency_id), creates_agent: creates_agent || null, created_by_agent_id: toNum(created_by_agent_id), created_at: new Date().toISOString(), completed_at: null };
+  const t = { id: nextId(tasks), project_id: +req.params.id, assigned_agent_id: toNum(assigned_agent_id), title, description: description || '', status: status || 'pending', dependency_id: toNum(dependency_id), creates_agent: creates_agent || null, created_by_agent_id: toNum(created_by_agent_id), priority: priority || 'medium', created_at: new Date().toISOString(), completed_at: null };
   tasks.push(t);
   saveYaml('tasks.yaml', tasks);
   const agents = loadYaml('agents.yaml');
@@ -460,9 +468,10 @@ app.post('/api/projects/:id/tasks', (req, res) => {
 // Feature 3: Agents can create tasks programmatically
 app.post('/api/projects/:id/tasks/from-agent', (req, res) => {
   if (!loadYaml('projects.yaml').find(p => p.id === +req.params.id)) return res.status(404).json({ error: 'project not found' });
-  const { agent_id, title, description, assigned_to_agent_id } = req.body;
+  const { agent_id, title, description, assigned_to_agent_id, priority } = req.body;
   if (!title) return res.status(400).json({ error: 'title required' });
   if (!agent_id) return res.status(400).json({ error: 'agent_id required (the agent creating this task)' });
+  if (priority && !['low', 'medium', 'high'].includes(priority)) return res.status(400).json({ error: 'priority must be low, medium, or high' });
 
   // Resolve agent_id (openclaw_agent_id string) to internal id
   const agents = loadYaml('agents.yaml');
@@ -484,6 +493,7 @@ app.post('/api/projects/:id/tasks/from-agent', (req, res) => {
     status: 'pending', dependency_id: null,
     creates_agent: null,
     created_by_agent_id: creatorAgent.id,
+    priority: priority || 'medium',
     created_at: new Date().toISOString(), completed_at: null
   };
   tasks.push(t);
@@ -501,10 +511,11 @@ app.put('/api/tasks/:id', (req, res) => {
   const tasks = loadYaml('tasks.yaml');
   const t = tasks.find(x => x.id === +req.params.id);
   if (!t) return res.status(404).json({ error: 'not found' });
-  const { assigned_agent_id, title, description, status, dependency_id, creates_agent, created_by_agent_id } = req.body;
+  const { assigned_agent_id, title, description, status, dependency_id, creates_agent, created_by_agent_id, priority } = req.body;
   const resolveAgent = (v) => (v === '' || v === null || v === undefined) ? null : +v || null;
   const resolveDep = (v) => (v === '' || v === null || v === undefined) ? null : +v || null;
-  Object.assign(t, { assigned_agent_id: assigned_agent_id !== undefined ? resolveAgent(assigned_agent_id) : t.assigned_agent_id, title: title ?? t.title, description: description ?? t.description, status: status ?? t.status, dependency_id: dependency_id !== undefined ? resolveDep(dependency_id) : t.dependency_id, creates_agent: creates_agent !== undefined ? creates_agent : t.creates_agent, created_by_agent_id: created_by_agent_id !== undefined ? created_by_agent_id : t.created_by_agent_id });
+  if (priority && !['low', 'medium', 'high'].includes(priority)) return res.status(400).json({ error: 'priority must be low, medium, or high' });
+  Object.assign(t, { assigned_agent_id: assigned_agent_id !== undefined ? resolveAgent(assigned_agent_id) : t.assigned_agent_id, title: title ?? t.title, description: description ?? t.description, status: status ?? t.status, dependency_id: dependency_id !== undefined ? resolveDep(dependency_id) : t.dependency_id, creates_agent: creates_agent !== undefined ? creates_agent : t.creates_agent, created_by_agent_id: created_by_agent_id !== undefined ? created_by_agent_id : t.created_by_agent_id, priority: priority ?? t.priority });
   if (status === 'done' && !t.completed_at) t.completed_at = new Date().toISOString();
   saveYaml('tasks.yaml', tasks);
   const a = loadYaml('agents.yaml').find(x => x.id === t.assigned_agent_id);
@@ -551,10 +562,43 @@ app.get('/api/dashboard', (req, res) => {
     total_agents: agents.length,
     active_tasks: tasks.filter(t => ['pending', 'in_progress'].includes(t.status)).length,
     completed_tasks: tasks.filter(t => t.status === 'done').length,
+    failed_tasks: tasks.filter(t => t.status === 'failed').length,
     total_spent: agents.reduce((s, a) => s + (a.budget_spent || 0), 0),
-    agents,
+    agents: agents.map(a => {
+      const at = tasks.filter(t => t.assigned_agent_id === a.id);
+      return {
+        ...a,
+        tasks_pending: at.filter(t => t.status === 'pending').length,
+        tasks_in_progress: at.filter(t => t.status === 'in_progress').length,
+        tasks_done: at.filter(t => t.status === 'done').length,
+        tasks_failed: at.filter(t => t.status === 'failed').length,
+        tasks_total: at.length
+      };
+    }),
     projects: projects.map(p => ({ ...p, task_total: tasks.filter(t => t.project_id === p.id).length, task_done: tasks.filter(t => t.project_id === p.id && t.status === 'done').length }))
   });
+});
+
+// ===================== HEALTH CHECK =====================
+
+app.get('/health', (req, res) => {
+  const agents = loadYaml('agents.yaml');
+  const tasks = loadYaml('tasks.yaml');
+  res.json({
+    status: 'ok',
+    uptime: process.uptime(),
+    agents: agents.length,
+    active_tasks: tasks.filter(t => ['pending', 'in_progress'].includes(t.status)).length,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// ===================== ERROR HANDLING MIDDLEWARE =====================
+
+app.use((err, req, res, next) => {
+  console.error('[Error]', err.stack || err.message || err);
+  const status = err.status || 500;
+  res.status(status).json({ error: status === 500 ? 'Internal server error' : err.message });
 });
 
 app.listen(PORT, () => { console.log(`ClawDesk running on http://localhost:${PORT}`); startHeartbeatEngine(); });
