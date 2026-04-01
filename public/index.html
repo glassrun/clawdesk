@@ -32,6 +32,7 @@ tr:last-child td{border-bottom:none}
 .badge-completed,.badge-done{background:#1a2a3a;color:var(--accent)}
 .badge-ok{background:#1a3a2a;color:var(--green)}
 .badge-error{background:#3a1a1a;color:var(--red)}
+.badge-warning{background:#3a2a1a;color:var(--orange)}
 .badge-priority-high{background:#3a1a1a;color:var(--red)}
 .badge-priority-medium{background:#2a2a1a;color:var(--yellow)}
 .badge-priority-low{background:#1a2a3a;color:var(--accent)}
@@ -89,6 +90,7 @@ tr:last-child td{border-bottom:none}
   <button class="active" data-tab="dashboard">Dashboard</button>
   <button data-tab="agents">Agents</button>
   <button data-tab="projects">Projects</button>
+  <button data-tab="tasks">All Tasks</button>
   <button data-tab="heartbeats">Heartbeats</button>
 </nav>
 <div class="container">
@@ -128,11 +130,36 @@ tr:last-child td{border-bottom:none}
     </div>
     <div id="project-list"></div>
   </div>
+  <!-- ALL TASKS -->
+  <div id="tab-tasks" class="tab">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+      <h2>All Tasks</h2>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input id="task-search" placeholder="Search tasks..." style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;width:180px">
+        <select id="task-filter-status" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px"><option value="">All Status</option><option value="pending">pending</option><option value="in_progress">in progress</option><option value="done">done</option><option value="failed">failed</option></select>
+        <select id="task-filter-priority" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px"><option value="">All Priority</option><option value="high">high</option><option value="medium">medium</option><option value="low">low</option></select>
+        <select id="task-filter-agent" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px"><option value="">All Agents</option></select>
+        <button class="btn btn-primary btn-sm" onclick="loadAllTasks()">Filter</button>
+      </div>
+    </div>
+    <div id="task-bulk-bar" style="display:none;margin-bottom:12px;padding:10px;background:var(--card);border:1px solid var(--border);border-radius:8px;font-size:13px;align-items:center;gap:10px">
+      <span id="task-bulk-count"></span>
+      <select id="task-bulk-action" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:12px"><option value="">Choose action...</option><option value="done">Mark done</option><option value="pending">Mark pending</option><option value="failed">Mark failed</option><option value="high">Set high priority</option><option value="low">Set low priority</option><option value="reassign">Reassign to agent...</option></select>
+      <select id="task-bulk-agent" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:12px;display:none"><option value="">Pick agent...</option></select>
+      <button class="btn btn-sm btn-primary" onclick="applyBulkAction()">Apply</button>
+      <button class="btn btn-sm" style="background:var(--border);color:var(--text)" onclick="clearBulkSelection()">Cancel</button>
+    </div>
+    <table><thead><tr><th><input type="checkbox" id="task-select-all" onchange="toggleAllTasks(this)"></th><th>ID</th><th>Title</th><th>Status</th><th>Priority</th><th>Agent</th><th>Project</th><th>Created</th><th>Actions</th></tr></thead><tbody id="all-tasks-list"></tbody></table>
+    <div id="task-pagination" style="margin-top:12px;display:flex;gap:8px;align-items:center;justify-content:center;font-size:13px;color:var(--dim)"></div>
+  </div>
   <!-- HEARTBEATS -->
   <div id="tab-heartbeats" class="tab">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <h2>Heartbeat Log</h2>
-      <button class="btn btn-primary" onclick="tickHeartbeats()">▶ Tick Now</button>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="hb-filter-status" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px"><option value="">All</option><option value="ok">ok</option><option value="idle">idle</option><option value="error">error</option><option value="warning">warning</option></select>
+        <button class="btn btn-primary" onclick="tickHeartbeats()">▶ Tick Now</button>
+      </div>
     </div>
     <div id="heartbeat-log" class="heartbeat-log"></div>
   </div>
@@ -227,12 +254,15 @@ function loadTab(tab) {
   if (tab === 'dashboard') loadDashboard();
   else if (tab === 'agents') loadAgents();
   else if (tab === 'projects') loadProjects();
+  else if (tab === 'tasks') loadAllTasks();
   else if (tab === 'heartbeats') loadHeartbeats();
 }
 
 async function api(path, opts) {
   const r = await fetch(API + path, { headers: { 'Content-Type': 'application/json' }, ...opts });
-  return r.json();
+  const data = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+  if (!r.ok) throw data;
+  return data;
 }
 
 function badge(status) { return `<span class="badge badge-${status}">${status.replace('_',' ')}</span>`; }
@@ -390,7 +420,7 @@ async function editProject(id) {
 }
 
 async function deleteProject(id) { if (!confirm('Delete this project and all tasks?')) return; await api('/api/projects/' + id, { method: 'DELETE' }); loadProjects(); }
-async function deleteTask(id, projectId) { if (!confirm('Delete this task?')) return; await api('/api/tasks/' + id, { method: 'DELETE' }); loadProjectDetail(projectId); }
+async function deleteTask(id, projectId) { if (!confirm('Delete this task?')) return; await api('/api/tasks/' + id, { method: 'DELETE' }); loadProjects(); }
 
 async function editTask(taskId, projectId) {
   const detail = await api('/api/projects/' + projectId);
@@ -484,13 +514,90 @@ function restoreOpenResults() {
   });
 }
 
+// All Tasks
+let taskPage = 1;
+let bulkSelected = new Set();
+
+async function loadAllTasks(page) {
+  if (page) taskPage = page;
+  const params = new URLSearchParams({ page: taskPage, limit: 30 });
+  const s = document.getElementById('task-search')?.value?.trim();
+  const status = document.getElementById('task-filter-status')?.value;
+  const priority = document.getElementById('task-filter-priority')?.value;
+  const agentId = document.getElementById('task-filter-agent')?.value;
+  if (s) params.set('search', s);
+  if (status) params.set('status', status);
+  if (priority) params.set('priority', priority);
+  if (agentId) params.set('agent_id', agentId);
+  const res = await api('/api/tasks?' + params);
+  const tasks = res.data || res;
+  const projects = await api('/api/projects');
+  allAgents = await api('/api/agents');
+  // Populate agent filter and bulk agent dropdown
+  const agentSel = document.getElementById('task-filter-agent');
+  const bulkAgentSel = document.getElementById('task-bulk-agent');
+  if (agentSel && agentSel.options.length <= 1) {
+    allAgents.forEach(a => { const o = document.createElement('option'); o.value = a.id; o.textContent = a.name; agentSel.appendChild(o); });
+  }
+  if (bulkAgentSel && bulkAgentSel.options.length <= 1) {
+    allAgents.forEach(a => { const o = document.createElement('option'); o.value = a.id; o.textContent = a.name; bulkAgentSel.appendChild(o); });
+  }
+  const projMap = {}; projects.forEach(p => { projMap[p.id] = p.title; });
+  document.getElementById('all-tasks-list').innerHTML = tasks.map(t => `<tr><td><input type="checkbox" class="task-cb" data-id="${t.id}" ${bulkSelected.has(t.id)?'checked':''} onchange="toggleBulkTask(${t.id},this.checked)"></td><td>#${t.id}</td><td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.title)}</td><td>${badge(t.status)}</td><td>${badge('priority-'+(t.priority||'medium'))}</td><td>${t.agent_name ? t.agent_name + ' ' + ocBadge(t.openclaw_agent_id) : '<span style="color:var(--dim)">unassigned</span>'}</td><td style="color:var(--dim);font-size:12px">${escHtml(projMap[t.project_id] || 'Project #'+t.project_id)}</td><td style="color:var(--dim);font-size:11px">${timeAgo(t.created_at)}</td><td><button class="inline-btn" onclick="runTaskFromAll(${t.id})" title="Run">▶</button><button class="inline-btn" onclick="duplicateTask(${t.id})" title="Duplicate">📋</button></td></tr>`).join('') || '<tr><td colspan="9" class="empty">No tasks found</td></tr>';
+  // Pagination
+  const pag = document.getElementById('task-pagination');
+  if (res.pages > 1) {
+    let html = `<span>${res.total} tasks · Page ${res.page}/${res.pages}</span>`;
+    if (res.page > 1) html += `<button class="inline-btn" onclick="loadAllTasks(${res.page-1})">← Prev</button>`;
+    if (res.page < res.pages) html += `<button class="inline-btn" onclick="loadAllTasks(${res.page+1})">Next →</button>`;
+    pag.innerHTML = html;
+  } else { pag.innerHTML = `<span>${res.total || tasks.length} tasks</span>`; }
+  updateBulkBar();
+}
+
+function toggleBulkTask(id, checked) { if (checked) bulkSelected.add(id); else bulkSelected.delete(id); updateBulkBar(); }
+function toggleAllTasks(el) { document.querySelectorAll('.task-cb').forEach(cb => { cb.checked = el.checked; toggleBulkTask(+cb.dataset.id, el.checked); }); }
+function clearBulkSelection() { bulkSelected.clear(); document.querySelectorAll('.task-cb').forEach(cb => cb.checked = false); document.getElementById('task-select-all').checked = false; updateBulkBar(); }
+function updateBulkBar() {
+  const bar = document.getElementById('task-bulk-bar');
+  if (bulkSelected.size > 0) { bar.style.display = 'flex'; document.getElementById('task-bulk-count').textContent = `${bulkSelected.size} selected`; }
+  else { bar.style.display = 'none'; }
+}
+async function applyBulkAction() {
+  const action = document.getElementById('task-bulk-action').value;
+  if (!action || bulkSelected.size === 0) return;
+  const body = { task_ids: [...bulkSelected] };
+  if (action === 'reassign') {
+    const agentId = document.getElementById('task-bulk-agent').value;
+    if (!agentId) { alert('Pick an agent first'); return; }
+    body.assigned_agent_id = agentId;
+  } else if (['done','pending','failed','in_progress'].includes(action)) {
+    body.status = action;
+  } else if (['high','medium','low'].includes(action)) {
+    body.priority = action;
+  }
+  await api('/api/tasks/bulk', { method: 'POST', body: JSON.stringify(body) });
+  clearBulkSelection(); loadAllTasks();
+}
+async function duplicateTask(id) {
+  await api('/api/tasks/' + id + '/duplicate', { method: 'POST', body: JSON.stringify({}) });
+  loadAllTasks();
+}
+async function runTaskFromAll(id) {
+  try { await api('/api/tasks/' + id + '/run', { method: 'POST' }); loadAllTasks(); } catch (e) { alert('Error: ' + (e.error || e.message)); }
+}
+
 // Heartbeats
 async function loadHeartbeats() {
-  const hbs = await api('/api/heartbeats?limit=100');
+  const statusFilter = document.getElementById('hb-filter-status')?.value || '';
+  const params = new URLSearchParams({ limit: 100 });
+  if (statusFilter) params.set('status', statusFilter);
+  const res = await api('/api/heartbeats?' + params);
+  const hbs = res.data || res; // handle both paginated and legacy
   document.getElementById('heartbeat-log').innerHTML = hbs.map(h => {
     let action; try { action = JSON.parse(h.action_taken); } catch { action = { raw: h.action_taken }; }
-    const s = action.action === 'completed' ? `Completed "${action.task_title}" via ${action.agent_id || ''}` : action.action === 'failed' ? `Failed "${action.task_title}" — ${action.error || ''}` : action.action === 'idle' ? 'No pending tasks' : JSON.stringify(action);
-    return `<div class="hb-entry"><span class="time">${new Date(h.triggered_at).toLocaleString()}</span><span class="agent">${h.agent_name || 'Agent ' + h.agent_id} ${h.openclaw_agent_id ? ocBadge(h.openclaw_agent_id) : ''}</span><span class="action">${s}</span>${badge(h.status)}</div>`;
+    const s = action.action === 'completed' ? `Completed "${action.task_title}" via ${action.agent_id || ''}` : action.action === 'failed' ? `Failed "${action.task_title}" — ${action.error || ''}` : action.action === 'idle' ? 'No pending tasks' : action.action === 'stuck_reset' ? `⚠ Auto-reset stuck task "${action.title}" (stuck since ${action.stuck_since ? new Date(action.stuck_since).toLocaleTimeString() : 'unknown'})` : JSON.stringify(action);
+    return `<div class="hb-entry"><span class="time">${new Date(h.triggered_at).toLocaleString()}</span><span class="agent">${h.agent_name || (h.agent_id ? 'Agent ' + h.agent_id : 'System')} ${h.openclaw_agent_id ? ocBadge(h.openclaw_agent_id) : ''}</span><span class="action">${s}</span>${badge(h.status)}</div>`;
   }).join('') || '<div class="empty">No heartbeat activity yet</div>';
 }
 
@@ -500,6 +607,13 @@ function closeModal(id) { document.getElementById(id).classList.remove('open'); 
 document.querySelectorAll('.modal-bg').forEach(m => m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); }));
 
 loadDashboard();
+// Global error handler for unhandled API errors
+window.addEventListener('unhandledrejection', e => {
+  const err = e.reason;
+  const msg = err?.error || err?.message || String(err);
+  console.error('API error:', msg);
+  if (!msg.includes('not found')) alert('Error: ' + msg);
+});
 </script>
 </body>
 </html>
