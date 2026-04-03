@@ -626,6 +626,12 @@ app.post('/api/projects', (req, res) => {
   if (!title) return res.status(400).json({ error: 'title required' });
   if (title.length > 200) return res.status(400).json({ error: 'title too long (max 200 chars)' });
   if (status && !['active', 'completed', 'failed'].includes(status)) return res.status(400).json({ error: 'status must be active, completed, or failed' });
+  
+  // Create workspace directory if it doesn't exist
+  if (workspace_path && workspace_path.trim().length > 0) {
+    fs.mkdirSync(workspace_path, { recursive: true, mode: 0o755 });
+  }
+  
   const projects = loadYaml('projects.yaml');
   const p = { id: nextId(projects), title, description: description || '', workspace_path: workspace_path || '', status: status || 'active', created_at: new Date().toISOString() };
   projects.push(p);
