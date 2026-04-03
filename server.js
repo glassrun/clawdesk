@@ -155,7 +155,7 @@ function syncFromOpenClaw() {
       const syncedSet = new Set(agentIds);
       let cleaned = 0;
       for (const a of agents) {
-        if (a.status === 'active' && !syncedSet.has(a.openclaw_agent_id)) {
+        if (!syncedSet.has(a.openclaw_agent_id)) {
           a.status = 'inactive';
           a.heartbeat_enabled = 0;
           cleaned++;
@@ -482,6 +482,8 @@ app.get('/api/agents', (req, res) => {
   let agents = loadYaml('agents.yaml');
   if (req.query.status) agents = agents.filter(a => a.status === req.query.status);
   if (req.query.search) { const s = req.query.search.toLowerCase(); agents = agents.filter(a => a.name.toLowerCase().includes(s) || a.openclaw_agent_id.toLowerCase().includes(s)); }
+  // Default: hide inactive agents unless explicitly requested
+  if (!req.query.status) agents = agents.filter(x => x.status === 'active');
   res.json(agents);
 });
 app.post('/api/agents', async (req, res) => {
