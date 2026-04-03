@@ -230,6 +230,25 @@ function setTaskStatus(taskId, newStatus) {
     const p = projects.find(x => x.id === t.project_id);
     if (p && p.status === 'completed') { p.status = 'active'; saveYaml('projects.yaml', projects); console.log(`[Auto] Project "${p.title}" reopened — task un-completed`); }
   }
+
+  // Recurring task: clone on completion
+  if (newStatus === 'done' && t.repeat && t.repeat !== 'never') {
+    const tasks = loadYaml('tasks.yaml');
+    const newTask = {
+      ...t,
+      id: nextId(tasks),
+      status: 'pending',
+      created_at: new Date().toISOString(),
+      _status_changed_at: null,
+      completed_at: null,
+      _retry_count: 0,
+      run_count: (t.run_count || 0) + 1
+    };
+    tasks.push(newTask);
+    saveYaml('tasks.yaml', tasks);
+    console.log(`[Recurring] Task "${t.title}" completed, created repeat run #${newTask.run_count}`);
+  }
+
   return t;
 }
 
