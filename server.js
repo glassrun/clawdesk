@@ -146,7 +146,7 @@ function syncFromOpenClaw() {
             name: id.split('-').map(w => w[0].toUpperCase() + w.slice(1)).join(' '),
             status: 'active',
             budget_limit: 0, budget_spent: 0,
-            heartbeat_enabled: 1, heartbeat_interval: 30,
+            heartbeat_enabled: 1, heartbeat_interval: 1,
             last_heartbeat: null, created_at: new Date().toISOString()
           });
         }
@@ -284,7 +284,7 @@ async function executeTask(agent, task) {
           name: task.creates_agent.split('-').map(w => w[0].toUpperCase() + w.slice(1)).join(' '),
           status: 'active',
           budget_limit: 0, budget_spent: 0,
-          heartbeat_enabled: 1, heartbeat_interval: 30,
+          heartbeat_enabled: 1, heartbeat_interval: 1,
           last_heartbeat: null, created_at: new Date().toISOString()
         });
         saveYaml('agents.yaml', agents);
