@@ -751,7 +751,7 @@ app.get('/api/projects/:id/tasks', (req, res) => {
 });
 app.post('/api/projects/:id/tasks', (req, res) => {
   if (!loadYaml('projects.yaml').find(p => p.id === +req.params.id)) return res.status(404).json({ error: 'project not found' });
-  const { assigned_agent_id, title, description, status, dependency_id, creates_agent, created_by_agent_id, priority } = req.body;
+  const { assigned_agent_id, title, description, status, dependency_id, creates_agent, created_by_agent_id, priority, repeat } = req.body;
   if (!title) return res.status(400).json({ error: 'title required' });
   if (title.length > 500) return res.status(400).json({ error: 'title too long (max 500 chars)' });
   if (priority && !['low', 'medium', 'high'].includes(priority)) return res.status(400).json({ error: 'priority must be low, medium, or high' });
