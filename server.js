@@ -151,12 +151,11 @@ function syncFromOpenClaw() {
           });
         }
       }
-      // Mark agents not in synced list as inactive (removed from OpenClaw)
+      // Remove agents not present in OpenClaw
       const syncedSet = new Set(agentIds);
       let cleaned = 0;
-      for (const a of agents) {
-        if (!syncedSet.has(a.openclaw_agent_id)) {
-          a.status = 'inactive';
+      agents = agents.filter(a => syncedSet.has(a.openclaw_agent_id));
+      cleaned = agents.length - syncedSet.size;
           a.heartbeat_enabled = 0;
           cleaned++;
         }
