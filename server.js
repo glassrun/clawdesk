@@ -132,7 +132,7 @@ function syncFromOpenClaw() {
       const output = (stderr || '') + (stdout || '');
       const agentIds = [...new Set(output.split('\n').map(l => l.trim()).filter(l => l.match(/^-\s+(\S+)/)).map(l => l.match(/^-\s+(\S+)/)[1]))];
       if (agentIds.length === 0 && err) return reject(new Error(`Failed: ${err.message}`));
-      const agents = loadYaml('agents.yaml');
+      let agents = loadYaml('agents.yaml');
       for (const id of agentIds) {
         const existing = agents.find(a => a.openclaw_agent_id === id);
         if (existing) {
