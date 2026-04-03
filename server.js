@@ -118,7 +118,7 @@ function createOpenClawAgent(agentId, name, workspace, opts = {}) {
 
 function deleteOpenClawAgent(agentId) {
   return new Promise((resolve, reject) => {
-    const cmd = `${OPENCLAW_CLI} agents delete "${agentId}" --json`;
+    const cmd = `${OPENCLAW_CLI} agents delete "${agentId}" --force --json`;
     exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
       if (err) return reject(new Error(`Failed to delete agent: ${err.message}`));
       resolve();
@@ -539,6 +539,16 @@ app.delete('/api/agents/:id', async (req, res) => {
   const idx = agents.findIndex(x => x.id === +req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'not found' });
   const agent = agents[idx];
+  
+  const tasks = loadYaml('tasks.yaml');
+  const agentTasks = tasks.filter(t => t.assigned_agent_id === agent.id && t.status !== 'done');
+  if (agentTasks.length > 0 && req.query.force !== '1') {
+    return res.status(400).json({ 
+      error: 'agent has active pending tasks', 
+      pending_tasks: agentTasks.length, 
+      hint: 'add ?force=1 to delete anyway'
+    });
+  }
   try {
     await deleteOpenClawAgent(agent.openclaw_agent_id);
     agents.splice(idx, 1);

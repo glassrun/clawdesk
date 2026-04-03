@@ -343,7 +343,7 @@ async function editAgent(id) {
   document.getElementById('modal-agent').classList.add('open');
 }
 
-async function deleteAgent(id) { if (!confirm('Delete this agent?')) return; await api('/api/agents/' + id, { method: 'DELETE' }); loadAgents(); }
+async function deleteAgent(id) { if (!confirm('Delete this agent? All assigned tasks will be removed.')) return; await api('/api/agents/' + id + '?force=1', { method: 'DELETE' }); loadAgents(); }
 async function triggerHeartbeat(id) { const r = await api('/api/agents/' + id + '/heartbeat', { method: 'POST' }); alert(`${r.agent}: ${r.action}${r.task_title ? ' — ' + r.task_title : ''}`); loadAgents(); }
 
 // Projects
