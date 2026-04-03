@@ -232,7 +232,7 @@ function setTaskStatus(taskId, newStatus) {
   }
 
   // Recurring task: clone on completion
-  if (newStatus === 'done' && t.repeat && t.repeat !== 'never') {
+  if (newStatus === 'done' && t.repeat === true) {
     const tasks = loadYaml('tasks.yaml');
     const newTask = {
       ...t,
