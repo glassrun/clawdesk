@@ -211,6 +211,7 @@ tr:last-child td{border-bottom:none}
     <div class="form-row"><label>Status</label><select id="et-status"><option value="pending">pending</option><option value="in_progress">in progress</option><option value="done">done</option><option value="failed">failed</option></select></div>
     <div class="form-row"><label>Depends on</label><select id="et-dep"><option value="">None</option></select></div>
     <div class="form-row"><label>Creates Agent (agent ID)</label><input id="et-creates-agent" placeholder="Leave empty if none"></div>
+    <div class="form-row"><label><input type="checkbox" id="et-repeat"> Repeat this task when done</label></div>
     <div class="modal-actions">
       <button class="btn" onclick="closeModal('modal-task-edit')">Cancel</button>
       <button class="btn btn-primary" id="et-save">Save</button>
@@ -432,6 +433,7 @@ async function editTask(taskId, projectId) {
   document.getElementById('et-dep').innerHTML = '<option value="">None</option>' + detail.tasks.filter(x => x.id !== taskId).map(x => `<option value="${x.id}" ${t.dependency_id===x.id?'selected':''}>${x.title}</option>`).join('');
   document.getElementById('et-creates-agent').value = t.creates_agent || '';
   document.getElementById('et-priority').value = t.priority || 'medium';
+  document.getElementById('et-repeat').checked = t.repeat === true;
   document.getElementById('et-save').onclick = async () => {
     await api('/api/tasks/' + taskId, { method: 'PUT', body: JSON.stringify({
       title: document.getElementById('et-title').value,
@@ -440,7 +442,8 @@ async function editTask(taskId, projectId) {
       assigned_agent_id: document.getElementById('et-agent').value || null,
       dependency_id: document.getElementById('et-dep').value || null,
       creates_agent: document.getElementById('et-creates-agent').value.trim() || null,
-      priority: document.getElementById('et-priority').value
+      priority: document.getElementById('et-priority').value,
+      repeat: document.getElementById('et-repeat').checked
     }) });
     closeModal('modal-task-edit'); loadProjects();
   };
