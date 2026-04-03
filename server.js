@@ -153,13 +153,9 @@ function syncFromOpenClaw() {
       }
       // Remove agents not present in OpenClaw
       const syncedSet = new Set(agentIds);
-      let cleaned = 0;
+      let cleaned = agents.length;
       agents = agents.filter(a => syncedSet.has(a.openclaw_agent_id));
-      cleaned = agents.length - syncedSet.size;
-          a.heartbeat_enabled = 0;
-          cleaned++;
-        }
-      }
+      cleaned = cleaned - agents.length;
       saveYaml('agents.yaml', agents);
       if (cleaned > 0) console.log(`[Sync] Marked ${cleaned} agent(s) inactive (not in OpenClaw)`);
       resolve({ synced: agentIds });
