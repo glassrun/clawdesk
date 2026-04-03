@@ -861,7 +861,7 @@ app.put('/api/tasks/:id', (req, res) => {
   const tasks = loadYaml('tasks.yaml');
   const t = tasks.find(x => x.id === +req.params.id);
   if (!t) return res.status(404).json({ error: 'not found' });
-  const { assigned_agent_id, title, description, status, dependency_id, creates_agent, created_by_agent_id, priority } = req.body;
+  const { assigned_agent_id, title, description, status, dependency_id, creates_agent, created_by_agent_id, priority, repeat } = req.body;
   const resolveAgent = (v) => (v === '' || v === null || v === undefined) ? null : +v || null;
   const resolveDep = (v) => (v === '' || v === null || v === undefined) ? null : +v || null;
   if (priority && !['low', 'medium', 'high'].includes(priority)) return res.status(400).json({ error: 'priority must be low, medium, or high' });
@@ -882,7 +882,7 @@ app.put('/api/tasks/:id', (req, res) => {
     }
   }
   const oldStatus = t.status;
-  Object.assign(t, { assigned_agent_id: assigned_agent_id !== undefined ? resolveAgent(assigned_agent_id) : t.assigned_agent_id, title: title ?? t.title, description: description ?? t.description, status: status ?? t.status, dependency_id: dependency_id !== undefined ? resolveDep(dependency_id) : t.dependency_id, creates_agent: creates_agent !== undefined ? creates_agent : t.creates_agent, created_by_agent_id: created_by_agent_id !== undefined ? created_by_agent_id : t.created_by_agent_id, priority: priority ?? t.priority });
+  Object.assign(t, { assigned_agent_id: assigned_agent_id !== undefined ? resolveAgent(assigned_agent_id) : t.assigned_agent_id, title: title ?? t.title, description: description ?? t.description, status: status ?? t.status, dependency_id: dependency_id !== undefined ? resolveDep(dependency_id) : t.dependency_id, creates_agent: creates_agent !== undefined ? creates_agent : t.creates_agent, created_by_agent_id: created_by_agent_id !== undefined ? created_by_agent_id : t.created_by_agent_id, priority: priority ?? t.priority, repeat: repeat !== undefined ? repeat : t.repeat });
   if (status && status !== oldStatus) {
     t._status_changed_at = new Date().toISOString();
     if (status === 'done') { if (!t.completed_at) t.completed_at = new Date().toISOString(); }
