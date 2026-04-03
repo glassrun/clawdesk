@@ -7,7 +7,7 @@ const yaml = require('js-yaml');
 const app = express();
 const PORT = process.env.PORT || 3777;
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
-const OPENCLAW_CLI = '/home/openclaw/.npm-global/bin/openclaw';
+const OPENCLAW_CLI = process.env.OPENCLAW_CLI || '/home/openclaw/.npm-global/bin/openclaw';
 const DATA_DIR = path.join(__dirname, 'data');
 
 app.use(express.json({ limit: '1mb' }));
