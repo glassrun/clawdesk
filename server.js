@@ -3,13 +3,15 @@ const path = require('path');
 const fs = require('fs');
 const { exec, execFile } = require('child_process');
 const yaml = require('js-yaml');
+const cors = require('cors');
 
 const app = express();
 const PORT = process.env.PORT || 3777;
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
-const OPENCLAW_CLI = process.env.OPENCLAW_CLI || '/home/openclaw/.npm-global/bin/openclaw';
+const OPENCLAW_CLI = (process.env.OPENCLAW_CLI && process.env.OPENCLAW_CLI !== '1') ? process.env.OPENCLAW_CLI : '/home/openclaw/.npm-global/bin/openclaw';
 const DATA_DIR = path.join(__dirname, 'data');
 
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1h' }));
 
@@ -64,7 +66,15 @@ function saveTaskResults(data) {
   saveYaml('task_results.yaml', data);
 }
 
-function nextId(arr) { return arr.length > 0 ? Math.max(...arr.map(x => x.id)) + 1 : 1; }
+function nextId(arr) { 
+  if (arr.length === 0) return 1;
+  const maxId = Math.max(...arr.map(x => x.id));
+  // Check if maxId already exists as duplicate, find unused ID
+  const existingIds = new Set(arr.map(x => x.id));
+  let id = maxId + 1;
+  while (existingIds.has(id)) id++;
+  return id;
+}
 
 // Normalize task for API response — fill in defaults for missing fields
 function normalizeTask(t, agents) {
@@ -128,22 +138,30 @@ function deleteOpenClawAgent(agentId) {
 
 function syncFromOpenClaw() {
   return new Promise((resolve, reject) => {
-    exec(`${OPENCLAW_CLI} agents list`, { timeout: 15000 }, (err, stdout, stderr) => {
-      const output = (stderr || '') + (stdout || '');
-      const agentIds = [...new Set(output.split('\n').map(l => l.trim()).filter(l => l.match(/^-\s+(\S+)/)).map(l => l.match(/^-\s+(\S+)/)[1]))];
-      if (agentIds.length === 0 && err) return reject(new Error(`Failed: ${err.message}`));
+    exec(`${OPENCLAW_CLI} agents list --json`, { timeout: 120000 }, (err, stdout, stderr) => {
+      if (err) return reject(new Error(`Failed: ${err.message}`));
+      let openclawAgents = [];
+      try {
+        openclawAgents = JSON.parse(stdout);
+      } catch (e) {
+        return reject(new Error(`Failed to parse JSON: ${e.message}`));
+      }
+      // Extract agent IDs from JSON (use id field, not routes/providers)
+      const agentIds = openclawAgents.map(a => a.id);
+      if (agentIds.length === 0) return resolve({ synced: [] });
       let agents = loadYaml('agents.yaml');
-      for (const id of agentIds) {
-        const existing = agents.find(a => a.openclaw_agent_id === id);
+      for (const a of openclawAgents) {
+        const id = a.id;
+        const name = a.identityName || a.name || id;
+        const existing = agents.find(x => x.openclaw_agent_id === id);
         if (existing) {
           existing.status = 'active';
-          // Update name from OpenClaw if it changed
-          const syncedName = id.split('-').map(w => w[0].toUpperCase() + w.slice(1)).join(' ');
-          if (existing.name !== syncedName) existing.name = syncedName;
+          if (existing.name !== name) existing.name = name;
         } else {
           agents.push({
-            id: nextId(agents), openclaw_agent_id: id,
-            name: id.split('-').map(w => w[0].toUpperCase() + w.slice(1)).join(' '),
+            id: id, // Use OpenClaw agent ID directly as the primary key
+            openclaw_agent_id: id,
+            name: name,
             status: 'active',
             budget_limit: 0, budget_spent: 0,
             heartbeat_enabled: 1, heartbeat_interval: 1,
@@ -157,7 +175,7 @@ function syncFromOpenClaw() {
       agents = agents.filter(a => syncedSet.has(a.openclaw_agent_id));
       cleaned = cleaned - agents.length;
       saveYaml('agents.yaml', agents);
-      if (cleaned > 0) console.log(`[Sync] Marked ${cleaned} agent(s) inactive (not in OpenClaw)`);
+      if (cleaned > 0) console.log(`[Sync] Removed ${cleaned} agent(s) not in OpenClaw`);
       resolve({ synced: agentIds });
     });
   });
@@ -181,14 +199,14 @@ function seed() {
   const t = (pid, agent, title, desc, status, dep, priority) => ({ id: ++tid, project_id: pid, assigned_agent_id: agentMap[agent] || null, title, description: desc, status, dependency_id: dep, creates_agent: null, created_by_agent_id: null, priority: priority || 'medium', created_at: now, completed_at: status === 'done' ? now : null });
   saveYaml('tasks.yaml', [
     t(1, 'content-studio', 'Design campaign visuals', 'Create banner ads, social media graphics, and email templates', 'in_progress', null, 'high'),
-    t(1, 'main', 'Review campaign strategy', 'Review and approve Q2 strategy and budget', 'pending', null, 'medium'),
-    t(1, 'project-manager', 'Set up tracking', 'Install analytics tracking on landing pages', 'pending', null, 'medium'),
-    t(1, 'content-studio', 'Write ad copy', 'Draft copy for all Q2 ad placements', 'pending', 1, 'high'),
-    t(1, 'main', 'Final launch approval', 'Final review and sign-off', 'pending', 4, 'low'),
-    t(2, 'project-manager', 'Audit current dashboards', 'Document existing dashboard inventory', 'done', null, 'medium'),
-    t(2, 'content-studio', 'Design new dashboard layout', 'Create wireframes for updated dashboards', 'in_progress', 6, 'medium'),
-    t(2, 'project-manager', 'Implement dashboard backend', 'Build API endpoints for new dashboard data', 'pending', 7, 'high'),
-    t(2, 'main', 'Approve dashboard budget', 'Review and approve budget for rebuild', 'pending', null, 'low')
+           t(1, 'main', 'Review campaign strategy', 'Review and approve Q2 strategy and budget', 'pending', null, 'medium'),
+           t(1, 'project-manager', 'Set up tracking', 'Install analytics tracking on landing pages', 'pending', null, 'medium'),
+           t(1, 'content-studio', 'Write ad copy', 'Draft copy for all Q2 ad placements', 'pending', 1, 'high'),
+           t(1, 'main', 'Final launch approval', 'Final review and sign-off', 'pending', 4, 'low'),
+           t(2, 'project-manager', 'Audit current dashboards', 'Document existing dashboard inventory', 'done', null, 'medium'),
+           t(2, 'content-studio', 'Design new dashboard layout', 'Create wireframes for updated dashboards', 'in_progress', 6, 'medium'),
+           t(2, 'project-manager', 'Implement dashboard backend', 'Build API endpoints for new dashboard data', 'pending', 7, 'high'),
+           t(2, 'main', 'Approve dashboard budget', 'Review and approve budget for rebuild', 'pending', null, 'low')
   ]);
   saveYaml('heartbeats.yaml', []);
   saveYaml('task_results.yaml', []);
@@ -300,11 +318,11 @@ async function executeTask(agent, task) {
       if (!agents.find(a => a.openclaw_agent_id === task.creates_agent)) {
         agents.push({
           id: nextId(agents), openclaw_agent_id: task.creates_agent,
-          name: task.creates_agent.split('-').map(w => w[0].toUpperCase() + w.slice(1)).join(' '),
-          status: 'active',
-          budget_limit: 0, budget_spent: 0,
-          heartbeat_enabled: 1, heartbeat_interval: 1,
-          last_heartbeat: null, created_at: new Date().toISOString()
+                    name: task.creates_agent.split('-').map(w => w[0].toUpperCase() + w.slice(1)).join(' '),
+                    status: 'active',
+                    budget_limit: 0, budget_spent: 0,
+                    heartbeat_enabled: 1, heartbeat_interval: 1,
+                    last_heartbeat: null, created_at: new Date().toISOString()
         });
         saveYaml('agents.yaml', agents);
       }
@@ -396,49 +414,49 @@ async function runHeartbeatCycle() {
   const cycleStart = Date.now();
   let results = [];
   try {
-  // Reset stuck tasks — only tasks that have been in_progress for >10 min
-  const tasks = loadYaml('tasks.yaml');
-  const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-  let changed = false;
-  const stuckResetLog = [];
-  for (const t of tasks) {
-    if (t.status === 'in_progress') {
-      const changedAt = t._status_changed_at || t.created_at;
-      if (changedAt < tenMinAgo) {
-        t.status = 'pending';
-        delete t._status_changed_at;
-        changed = true;
-        stuckResetLog.push({ task_id: t.id, title: t.title, stuck_since: changedAt });
+    // Reset stuck tasks — only tasks that have been in_progress for >10 min
+    const tasks = loadYaml('tasks.yaml');
+    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    let changed = false;
+    const stuckResetLog = [];
+    for (const t of tasks) {
+      if (t.status === 'in_progress') {
+        const changedAt = t._status_changed_at || t.created_at;
+        if (changedAt < tenMinAgo) {
+          t.status = 'pending';
+          delete t._status_changed_at;
+          changed = true;
+          stuckResetLog.push({ task_id: t.id, title: t.title, stuck_since: changedAt });
+        }
       }
     }
-  }
-  if (changed) {
-    saveYaml('tasks.yaml', tasks);
-    if (stuckResetLog.length > 0) {
-      const hbs = loadYaml('heartbeats.yaml');
-      for (const s of stuckResetLog) {
-        hbs.push({ id: nextId(hbs), agent_id: null, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'stuck_reset', ...s }), status: 'warning' });
+    if (changed) {
+      saveYaml('tasks.yaml', tasks);
+      if (stuckResetLog.length > 0) {
+        const hbs = loadYaml('heartbeats.yaml');
+        for (const s of stuckResetLog) {
+          hbs.push({ id: nextId(hbs), agent_id: null, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'stuck_reset', ...s }), status: 'warning' });
+        }
+        saveHeartbeats(hbs);
+        console.log(`[Heartbeat] Reset ${stuckResetLog.length} stuck task(s): ${stuckResetLog.map(s => s.title).join(', ')}`);
       }
-      saveHeartbeats(hbs);
-      console.log(`[Heartbeat] Reset ${stuckResetLog.length} stuck task(s): ${stuckResetLog.map(s => s.title).join(', ')}`);
     }
-  }
 
-  const now = new Date();
-  const agents = loadYaml('agents.yaml').filter(a => a.heartbeat_enabled && a.status === 'active');
-  for (const agent of agents) {
-    if (agent.last_heartbeat && (now - new Date(agent.last_heartbeat)) / 60000 < agent.heartbeat_interval) continue;
-    // Per-agent timeout: don't let one agent block the whole cycle
-    try {
-      const hbPromise = triggerHeartbeat(agent);
-      const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('heartbeat timeout (200s)')), 200000));
-      results.push(await Promise.race([hbPromise, timeoutPromise]));
-    } catch (e) {
-      console.error(`[Heartbeat] ${agent.name}: ${e.message}`);
-      results.push({ agent: agent.name, action: 'error', error: e.message });
+    const now = new Date();
+    const agents = loadYaml('agents.yaml').filter(a => a.heartbeat_enabled && a.status === 'active');
+    for (const agent of agents) {
+      if (agent.last_heartbeat && (now - new Date(agent.last_heartbeat)) / 60000 < agent.heartbeat_interval) continue;
+      // Per-agent timeout: don't let one agent block the whole cycle
+      try {
+        const hbPromise = triggerHeartbeat(agent);
+        const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('heartbeat timeout (200s)')), 200000));
+        results.push(await Promise.race([hbPromise, timeoutPromise]));
+      } catch (e) {
+        console.error(`[Heartbeat] ${agent.name}: ${e.message}`);
+        results.push({ agent: agent.name, action: 'error', error: e.message });
+      }
     }
-  }
-  return results;
+    return results;
   } finally {
     heartbeatRunning = false;
     const elapsed = Date.now() - cycleStart;
@@ -494,11 +512,28 @@ app.post('/api/agents/sync', async (req, res) => {
 // Agents CRUD
 app.get('/api/agents', (req, res) => {
   let agents = loadYaml('agents.yaml');
+  const tasks = loadYaml('tasks.yaml');
   if (req.query.status) agents = agents.filter(a => a.status === req.query.status);
   if (req.query.search) { const s = req.query.search.toLowerCase(); agents = agents.filter(a => a.name.toLowerCase().includes(s) || a.openclaw_agent_id.toLowerCase().includes(s)); }
   // Default: hide inactive agents unless explicitly requested
   if (!req.query.status) agents = agents.filter(x => x.status === 'active');
-  res.json(agents);
+  // Add computed task counts
+  const taskCounts = {};
+  for (const t of tasks) {
+    if (!taskCounts[t.assigned_agent_id]) taskCounts[t.assigned_agent_id] = {pending: 0, in_progress: 0, done: 0, failed: 0};
+    if (t.status === 'pending') taskCounts[t.assigned_agent_id].pending++;
+    else if (t.status === 'in_progress') taskCounts[t.assigned_agent_id].in_progress++;
+    else if (t.status === 'done') taskCounts[t.assigned_agent_id].done++;
+    else if (t.status === 'failed') taskCounts[t.assigned_agent_id].failed++;
+  }
+  const result = agents.map(a => ({
+    ...a,
+    tasks_pending: taskCounts[a.id]?.pending || 0,
+    tasks_in_progress: taskCounts[a.id]?.in_progress || 0,
+    tasks_done: taskCounts[a.id]?.done || 0,
+    tasks_failed: taskCounts[a.id]?.failed || 0,
+  }));
+  res.json(result);
 });
 app.post('/api/agents', async (req, res) => {
   const { job_title, job_description, openclaw_agent_id, name, status, budget_limit, heartbeat_enabled, heartbeat_interval } = req.body;
@@ -537,8 +572,8 @@ app.get('/api/agents/:id/stats', (req, res) => {
     last_heartbeat: agent.last_heartbeat,
     tasks: { total: tasks.length, ...byStatus },
     projects: projectIds.map(pid => { const p = projects.find(x => x.id === pid); return { id: pid, title: p?.title || 'Unknown', tasks: tasks.filter(t => t.project_id === pid).length }; }),
-    heartbeat_runs: hbs.length,
-    last_heartbeat_action: lastHb ? (() => { try { return JSON.parse(lastHb.action_taken); } catch { return { raw: lastHb.action_taken }; } })() : null
+           heartbeat_runs: hbs.length,
+           last_heartbeat_action: lastHb ? (() => { try { return JSON.parse(lastHb.action_taken); } catch { return { raw: lastHb.action_taken }; } })() : null
   });
 });
 app.put('/api/agents/:id', (req, res) => {
@@ -555,13 +590,13 @@ app.delete('/api/agents/:id', async (req, res) => {
   const idx = agents.findIndex(x => x.id === +req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'not found' });
   const agent = agents[idx];
-  
+
   const tasks = loadYaml('tasks.yaml');
   const agentTasks = tasks.filter(t => t.assigned_agent_id === agent.id && t.status !== 'done');
   if (agentTasks.length > 0 && req.query.force !== '1') {
-    return res.status(400).json({ 
-      error: 'agent has active pending tasks', 
-      pending_tasks: agentTasks.length, 
+    return res.status(400).json({
+      error: 'agent has active pending tasks',
+      pending_tasks: agentTasks.length,
       hint: 'add ?force=1 to delete anyway'
     });
   }
@@ -645,12 +680,12 @@ app.post('/api/projects', (req, res) => {
   if (!title) return res.status(400).json({ error: 'title required' });
   if (title.length > 200) return res.status(400).json({ error: 'title too long (max 200 chars)' });
   if (status && !['active', 'completed', 'failed'].includes(status)) return res.status(400).json({ error: 'status must be active, completed, or failed' });
-  
+
   // Create workspace directory if it doesn't exist
   if (workspace_path && workspace_path.trim().length > 0) {
     fs.mkdirSync(workspace_path, { recursive: true, mode: 0o755 });
   }
-  
+
   const projects = loadYaml('projects.yaml');
   const p = { id: nextId(projects), title, description: description || '', workspace_path: workspace_path || '', status: status || 'active', created_at: new Date().toISOString() };
   projects.push(p);
@@ -697,9 +732,9 @@ app.get('/api/projects/:id/stats', (req, res) => {
   res.json({
     project_id: p.id, title: p.title, status: p.status,
     total_tasks: tasks.length, completion_pct: tasks.length > 0 ? Math.round((byStatus.done || 0) / tasks.length * 100) : 0,
-    by_status: byStatus, by_priority: byPriority,
-    agent_breakdown: agentBreakdown,
-    oldest_pending: oldestPending, oldest_in_progress: oldestInProgress
+           by_status: byStatus, by_priority: byPriority,
+           agent_breakdown: agentBreakdown,
+           oldest_pending: oldestPending, oldest_in_progress: oldestInProgress
   });
 });
 app.put('/api/projects/:id', (req, res) => {
@@ -798,7 +833,7 @@ app.post('/api/projects/:id/tasks/from-agent', (req, res) => {
 
   // Resolve agent_id (openclaw_agent_id string) to internal id
   const agents = loadYaml('agents.yaml');
-  const creatorAgent = agents.find(a => a.openclaw_agent_id === agent_id || a.id === +agent_id);
+  const creatorAgent = agents.find(a => a.openclaw_agent_id === agent_id || a.id === agent_id);
   if (!creatorAgent) return res.status(404).json({ error: 'creator agent not found' });
 
   let assignedId = null;
@@ -818,13 +853,13 @@ app.post('/api/projects/:id/tasks/from-agent', (req, res) => {
   }
   const t = {
     id: nextId(tasks), project_id: +req.params.id,
-    assigned_agent_id: assignedId,
-    title, description: description || '',
-    status: 'pending', dependency_id: depId,
-    creates_agent: null,
-    created_by_agent_id: creatorAgent.id,
-    priority: priority || 'medium',
-    created_at: new Date().toISOString(), completed_at: null
+         assigned_agent_id: assignedId,
+         title, description: description || '',
+         status: 'pending', dependency_id: depId,
+         creates_agent: null,
+         created_by_agent_id: creatorAgent.id,
+         priority: priority || 'medium',
+         created_at: new Date().toISOString(), completed_at: null
   };
   tasks.push(t);
   saveYaml('tasks.yaml', tasks);
@@ -859,10 +894,11 @@ app.get('/api/tasks/:id', (req, res) => {
 });
 app.put('/api/tasks/:id', (req, res) => {
   const tasks = loadYaml('tasks.yaml');
-  const t = tasks.find(x => x.id === +req.params.id);
+  const taskId = +req.params.id;
+  const t = tasks.find(x => x.id === taskId);
   if (!t) return res.status(404).json({ error: 'not found' });
   const { assigned_agent_id, title, description, status, dependency_id, creates_agent, created_by_agent_id, priority, repeat } = req.body;
-  const resolveAgent = (v) => (v === '' || v === null || v === undefined) ? null : +v || null;
+  const resolveAgent = (v) => (v === '' || v === null || v === undefined) ? null : (typeof v === 'string' ? v : +v || null);
   const resolveDep = (v) => (v === '' || v === null || v === undefined) ? null : +v || null;
   if (priority && !['low', 'medium', 'high'].includes(priority)) return res.status(400).json({ error: 'priority must be low, medium, or high' });
   // Validate circular dependency if dependency_id is being changed
@@ -953,13 +989,13 @@ app.get('/api/tasks/:id/history', (req, res) => {
   res.json({
     task: { id: task.id, title: task.title, status: task.status, priority: task.priority, assigned_agent_id: task.assigned_agent_id, created_at: task.created_at, completed_at: task.completed_at, retry_count: task._retry_count || 0 },
     executions: results.filter(r => r.type !== 'note').map(r => ({ id: r.id, status: r.output?.startsWith('Error:') ? 'failed' : 'completed', duration_ms: r.duration_ms, executed_at: r.executed_at, output_preview: (r.output || '').substring(0, 200) })),
-    notes: results.filter(r => r.type === 'note').map(r => ({ id: r.id, note: r.output, agent_id: r.agent_id, created_at: r.executed_at })),
-    heartbeat_entries: hbs.map(h => { const a = agents.find(x => x.id === h.agent_id); return { id: h.id, triggered_at: h.triggered_at, status: h.status, agent_name: a?.name, action: (() => { try { return JSON.parse(h.action_taken); } catch { return { raw: h.action_taken }; } })() }; }),
-    dependency_chain: chain,
-    dependents,
-    total_executions: results.filter(r => r.type !== 'note').length,
-    total_notes: results.filter(r => r.type === 'note').length,
-    total_heartbeat_entries: hbs.length
+           notes: results.filter(r => r.type === 'note').map(r => ({ id: r.id, note: r.output, agent_id: r.agent_id, created_at: r.executed_at })),
+           heartbeat_entries: hbs.map(h => { const a = agents.find(x => x.id === h.agent_id); return { id: h.id, triggered_at: h.triggered_at, status: h.status, agent_name: a?.name, action: (() => { try { return JSON.parse(h.action_taken); } catch { return { raw: h.action_taken }; } })() }; }),
+           dependency_chain: chain,
+           dependents,
+           total_executions: results.filter(r => r.type !== 'note').length,
+           total_notes: results.filter(r => r.type === 'note').length,
+           total_heartbeat_entries: hbs.length
   });
 });
 // Reverse dependency lookup — tasks that depend on this task
@@ -1002,15 +1038,15 @@ app.post('/api/tasks/:id/duplicate', (req, res) => {
   }
   const t = {
     id: nextId(tasks), project_id: orig.project_id,
-    assigned_agent_id: orig.assigned_agent_id,
-    title: req.body.title || (orig.title + ' (copy)'),
-    description: orig.description, status: 'pending',
-    dependency_id: orig.dependency_id,
-    creates_agent: orig.creates_agent,
-    created_by_agent_id: orig.created_by_agent_id,
-    priority: orig.priority,
-    created_at: new Date().toISOString(), completed_at: null
-    // intentionally omitting _retry_count, _status_changed_at — copies start clean
+         assigned_agent_id: orig.assigned_agent_id,
+         title: req.body.title || (orig.title + ' (copy)'),
+         description: orig.description, status: 'pending',
+         dependency_id: orig.dependency_id,
+         creates_agent: orig.creates_agent,
+         created_by_agent_id: orig.created_by_agent_id,
+         priority: orig.priority,
+         created_at: new Date().toISOString(), completed_at: null
+         // intentionally omitting _retry_count, _status_changed_at — copies start clean
   };
   tasks.push(t);
   saveYaml('tasks.yaml', tasks);
@@ -1107,7 +1143,7 @@ app.post('/api/tasks/:id/assign', (req, res) => {
   const t = tasks.find(x => x.id === +req.params.id);
   if (!t) return res.status(404).json({ error: 'not found' });
   const agents = loadYaml('agents.yaml');
-  const agent = agents.find(a => a.id === +agent_id || a.openclaw_agent_id === agent_id);
+  const agent = agents.find(a => a.id === agent_id || a.openclaw_agent_id === agent_id);
   if (!agent) return res.status(400).json({ error: 'agent not found' });
   const oldAgentId = t.assigned_agent_id;
   t.assigned_agent_id = agent.id;
@@ -1156,10 +1192,10 @@ app.get('/api/tasks', (req, res) => {
   const pri = { high: 0, medium: 1, low: 2 };
   const sortFns = {
     priority: (a, b) => ((pri[a.priority] ?? 1) - (pri[b.priority] ?? 1)) * sortDir,
-    created_at: (a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0) * sortDir,
-    title: (a, b) => a.title.localeCompare(b.title) * sortDir,
-    status: (a, b) => a.status.localeCompare(b.status) * sortDir,
-    id: (a, b) => (a.id - b.id) * sortDir
+        created_at: (a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0) * sortDir,
+        title: (a, b) => a.title.localeCompare(b.title) * sortDir,
+        status: (a, b) => a.status.localeCompare(b.status) * sortDir,
+        id: (a, b) => (a.id - b.id) * sortDir
   };
   tasks.sort(sortFns[sortBy] || sortFns.priority);
   // Pagination
@@ -1179,30 +1215,30 @@ app.get('/api/dashboard', (req, res) => {
   res.json({
     total_agents: agents.length,
     active_tasks: tasks.filter(t => ['pending', 'in_progress'].includes(t.status)).length,
-    completed_tasks: tasks.filter(t => t.status === 'done').length,
-    failed_tasks: tasks.filter(t => t.status === 'failed').length,
-    total_spent: agents.reduce((s, a) => s + (a.budget_spent || 0), 0),
-    agents: agents.map(a => {
-      const at = tasks.filter(t => t.assigned_agent_id === a.id);
-      return {
-        ...a,
-        tasks_pending: at.filter(t => t.status === 'pending').length,
-        tasks_in_progress: at.filter(t => t.status === 'in_progress').length,
-        tasks_done: at.filter(t => t.status === 'done').length,
-        tasks_failed: at.filter(t => t.status === 'failed').length,
-        tasks_total: at.length
-      };
-    }),
-    projects: projects.map(p => {
-      const pt = tasks.filter(t => t.project_id === p.id);
-      const done = pt.filter(t => t.status === 'done').length;
-      return { ...p, task_total: pt.length, task_done: done, completion_pct: pt.length > 0 ? Math.round(done / pt.length * 100) : 0 };
-    }),
-    recent_heartbeats: recentHbs.map(h => {
-      const a = agents.find(x => x.id === h.agent_id);
-      let action; try { action = JSON.parse(h.action_taken); } catch { action = {}; }
-      return { id: h.id, triggered_at: h.triggered_at, status: h.status, agent_name: a?.name || 'System', action_summary: action.action || 'unknown' };
-    })
+           completed_tasks: tasks.filter(t => t.status === 'done').length,
+           failed_tasks: tasks.filter(t => t.status === 'failed').length,
+           total_spent: agents.reduce((s, a) => s + (a.budget_spent || 0), 0),
+           agents: agents.map(a => {
+             const at = tasks.filter(t => t.assigned_agent_id === a.id);
+             return {
+               ...a,
+               tasks_pending: at.filter(t => t.status === 'pending').length,
+                              tasks_in_progress: at.filter(t => t.status === 'in_progress').length,
+                              tasks_done: at.filter(t => t.status === 'done').length,
+                              tasks_failed: at.filter(t => t.status === 'failed').length,
+                              tasks_total: at.length
+             };
+           }),
+           projects: projects.map(p => {
+             const pt = tasks.filter(t => t.project_id === p.id);
+             const done = pt.filter(t => t.status === 'done').length;
+             return { ...p, task_total: pt.length, task_done: done, completion_pct: pt.length > 0 ? Math.round(done / pt.length * 100) : 0 };
+           }),
+           recent_heartbeats: recentHbs.map(h => {
+             const a = agents.find(x => x.id === h.agent_id);
+             let action; try { action = JSON.parse(h.action_taken); } catch { action = {}; }
+             return { id: h.id, triggered_at: h.triggered_at, status: h.status, agent_name: a?.name || 'System', action_summary: action.action || 'unknown' };
+           })
   });
 });
 
@@ -1218,19 +1254,19 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     uptime: process.uptime(),
-    agents: agents.length,
-    active_tasks: tasks.filter(t => ['pending', 'in_progress'].includes(t.status)).length,
-    failed_tasks: tasks.filter(t => t.status === 'failed').length,
-    heartbeat: {
-      cycles: heartbeatStats.cycles,
-      avgMs: heartbeatStats.cycles > 0 ? Math.round(heartbeatStats.totalMs / heartbeatStats.cycles) : 0,
-      lastMs: heartbeatStats.lastCycleMs,
-      recentAvgMs: heartbeatStats.last10Ms.length > 0 ? Math.round(heartbeatStats.last10Ms.reduce((a,b) => a+b, 0) / heartbeatStats.last10Ms.length) : 0,
-      agentsProcessed: heartbeatStats.agentsProcessed,
-      errors: heartbeatStats.errors,
-      running: heartbeatRunning
-    },
-    timestamp: new Date().toISOString()
+           agents: agents.length,
+           active_tasks: tasks.filter(t => ['pending', 'in_progress'].includes(t.status)).length,
+           failed_tasks: tasks.filter(t => t.status === 'failed').length,
+           heartbeat: {
+             cycles: heartbeatStats.cycles,
+             avgMs: heartbeatStats.cycles > 0 ? Math.round(heartbeatStats.totalMs / heartbeatStats.cycles) : 0,
+           lastMs: heartbeatStats.lastCycleMs,
+           recentAvgMs: heartbeatStats.last10Ms.length > 0 ? Math.round(heartbeatStats.last10Ms.reduce((a,b) => a+b, 0) / heartbeatStats.last10Ms.length) : 0,
+           agentsProcessed: heartbeatStats.agentsProcessed,
+           errors: heartbeatStats.errors,
+           running: heartbeatRunning
+           },
+           timestamp: new Date().toISOString()
   });
 });
 
@@ -1256,8 +1292,8 @@ app.get('/api/system/stats', (req, res) => {
     max_task_results: MAX_TASK_RESULTS,
     file_sizes_bytes: fileSizes,
     uptime_seconds: Math.round(process.uptime()),
-    node_version: process.version,
-    timestamp: new Date().toISOString()
+           node_version: process.version,
+           timestamp: new Date().toISOString()
   });
 });
 
@@ -1290,10 +1326,10 @@ app.post('/api/system/cleanup', (req, res) => {
     stale_completed_at_cleared: clearedDates
   });
 
-// 404 for unknown API routes
-app.use('/api', (req, res) => {
-  res.status(404).json({ error: `No route for ${req.method} ${req.originalUrl}` });
-});});
+  // 404 for unknown API routes
+  app.use('/api', (req, res) => {
+    res.status(404).json({ error: `No route for ${req.method} ${req.originalUrl}` });
+  });});
 
 // ===================== ERROR HANDLING MIDDLEWARE =====================
 
