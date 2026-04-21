@@ -8,7 +8,7 @@ const cors = require('cors');
 const app = express();
 const PORT = process.env.PORT || 3777;
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
-const OPENCLAW_CLI = (process.env.OPENCLAW_CLI && process.env.OPENCLAW_CLI !== '1') ? process.env.OPENCLAW_CLI : '/home/openclaw/.npm-global/bin/openclaw';
+const OPENCLAW_CLI = process.env.OPENCLAW_CLI || '/home/openclaw/.npm-global/bin/openclaw';
 const DATA_DIR = path.join(__dirname, 'data');
 
 app.use(cors({ origin: true, credentials: true }));
@@ -76,36 +76,36 @@ function nextId(arr) {
   return id;
 }
 
-// Normalize task for API response — fill in defaults for missing fields
 function normalizeTask(t, agents) {
   const a = agents?.find(x => x.id === t.assigned_agent_id);
   return { ...t, priority: t.priority || 'medium', agent_name: a?.name, openclaw_agent_id: a?.openclaw_agent_id };
 }
 
-// ===================== OPENCLAW HELPERS =====================
-
 function runOpenClawAgent(agentId, message, timeout = 180000, cwd) {
-  return new Promise((resolve, reject) => {
-    const args = ['agent', '--agent', agentId, '--message', message, '--json', '--timeout', String(Math.floor(timeout / 1000))];
-    const opts = { timeout, maxBuffer: 1024 * 1024 };
-    if (cwd) opts.cwd = cwd;
-    execFile(OPENCLAW_CLI, args, opts, (err, stdout, stderr) => {
+  return new Promise((resolve, reject) => { 
+    const args = ['agent', '--agent', agentId, '--message', message, '--json', '--timeout', String(Math.floor((timeout || 180000) / 1000))];
+    const { spawn } = require('child_process');
+    const child = spawn('/usr/bin/node', ['/home/openclaw/.npm-global/lib/node_modules/openclaw/openclaw.mjs', ...args]);
+    let stdout = '', stderr = '';
+    child.stdout.on('data', d => stdout += d);
+    child.stderr.on('data', d => stderr += d);
+    child.on('error', err => reject(new Error('spawn error: ' + err.message)));
+    child.on('close', code => {
       let result = null;
       if (stdout && stdout.trim()) { try { result = JSON.parse(stdout.trim()); } catch {} }
       if (result && result.status === 'ok') return resolve(result);
-      if (result && !err) return resolve(result);
-      if (err && result) return resolve(result);
-      // Fallback: if agent did actual work (stdout exists), treat as success
+      if (result && !code) return resolve(result);
+      if (code && result) return resolve(result);
       if (stdout && stdout.trim().length > 0) return resolve({ status: 'ok', summary: 'completed', _raw: stdout.trim().substring(0, 2000) });
-      const errMsg = err ? err.message : 'openclaw agent returned no output';
+      const errMsg = 'openclaw agent returned no output';
       const stderrSnippet = stderr ? stderr.trim().substring(0, 500) : '';
-      reject(new Error(`${errMsg}${stderrSnippet ? '\n' + stderrSnippet : ''}`));
+      reject(new Error(errMsg + (stderrSnippet ? '\n' + stderrSnippet : '')));
     });
   });
 }
 
 function createOpenClawAgent(agentId, name, workspace, opts = {}) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, reject) => { 
     const wsDir = workspace || path.join(process.env.HOME, `.openclaw/workspace-${agentId}`);
     fs.mkdirSync(wsDir, { recursive: true });
 
@@ -127,7 +127,7 @@ function createOpenClawAgent(agentId, name, workspace, opts = {}) {
 }
 
 function deleteOpenClawAgent(agentId) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, reject) => { 
     const cmd = `${OPENCLAW_CLI} agents delete "${agentId}" --force --json`;
     exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
       if (err) return reject(new Error(`Failed to delete agent: ${err.message}`));
@@ -137,7 +137,7 @@ function deleteOpenClawAgent(agentId) {
 }
 
 function syncFromOpenClaw() {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, reject) => { 
     exec(`${OPENCLAW_CLI} agents list --json`, { timeout: 120000 }, (err, stdout, stderr) => {
       if (err) return reject(new Error(`Failed: ${err.message}`));
       let openclawAgents = [];
@@ -276,7 +276,8 @@ async function executeTask(agent, task) {
   const projects = loadYaml('projects.yaml');
   const project = projects.find(p => p.id === task.project_id);
 
-  let message = `You are working on a project task. DO the work - do not just say "Done."`;
+  // Build full prompt with system rules
+  let message = `You are a ClawDesk agent. ClawDesk is AI-powered project management.\n\nWORKSPACE RULES:\n- Use project workspace_path for file ops\n- Write to FULL paths\n- Don't ask if unclear\n\n`;
   message += `\nUse your tools (read, write, exec, web_search, web_fetch) to actually complete the task.`;
   if (project && project.workspace_path) {
     message += `\nCRITICAL: Write ALL files to the PROJECT workspace, not your own workspace.`;
@@ -335,7 +336,8 @@ async function executeTask(agent, task) {
 
   const startTime = Date.now();
   try {
-    const result = await runOpenClawAgent(agent.openclaw_agent_id, message, 180000, project?.workspace_path);
+    
+    const result = await runOpenClawAgent(agent.openclaw_agent_id, message, 180000, undefined);
     const durationMs = Date.now() - startTime;
     const output = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
     setTaskStatus(task.id, 'done');
@@ -681,13 +683,18 @@ app.post('/api/projects', (req, res) => {
   if (title.length > 200) return res.status(400).json({ error: 'title too long (max 200 chars)' });
   if (status && !['active', 'completed', 'failed'].includes(status)) return res.status(400).json({ error: 'status must be active, completed, or failed' });
 
-  // Create workspace directory if it doesn't exist
-  if (workspace_path && workspace_path.trim().length > 0) {
-    fs.mkdirSync(workspace_path, { recursive: true, mode: 0o755 });
+  // Auto-generate workspace_path if missing
+  let finalWorkspace = workspace_path?.trim();
+  if (!finalWorkspace) {
+    const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    finalWorkspace = path.join(process.env.HOME, `clawdesk-projects/${slug}-${Date.now()}`);
   }
+  
+  // Create workspace directory
+  fs.mkdirSync(finalWorkspace, { recursive: true, mode: 0o755 });
 
   const projects = loadYaml('projects.yaml');
-  const p = { id: nextId(projects), title, description: description || '', workspace_path: workspace_path || '', status: status || 'active', created_at: new Date().toISOString() };
+  const p = { id: nextId(projects), title, description: description || '', workspace_path: finalWorkspace, status: status || 'active', created_at: new Date().toISOString() };
   projects.push(p);
   saveYaml('projects.yaml', projects);
   res.status(201).json(p);
@@ -1101,6 +1108,7 @@ app.post('/api/tasks/:id/run', async (req, res) => {
   // Mark in_progress with timestamp
   setTaskStatus(task.id, 'in_progress');
   try { res.json(await executeTask(agent, task)); } catch (e) {
+    console.log("[TASK ERROR]", e);
     setTaskStatus(task.id, 'pending');
     // Log to heartbeat for visibility
     const hbs = loadYaml('heartbeats.yaml');
