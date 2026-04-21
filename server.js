@@ -475,18 +475,27 @@ async function runHeartbeatCycle() {
 
     const now = new Date();
     const agents = loadYaml('agents.yaml').filter(a => a.heartbeat_enabled && a.status === 'active');
+    // Run all agent heartbeats in parallel
+    const heartbeatPromises = [];
     for (const agent of agents) {
       if (agent.last_heartbeat && (now - new Date(agent.last_heartbeat)) / 60000 < agent.heartbeat_interval) continue;
       // Per-agent timeout: don't let one agent block the whole cycle
-      try {
-        const hbPromise = triggerHeartbeat(agent);
-        const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('heartbeat timeout (200s)')), 200000));
-        results.push(await Promise.race([hbPromise, timeoutPromise]));
-      } catch (e) {
-        console.error(`[Heartbeat] ${agent.name}: ${e.message}`);
-        results.push({ agent: agent.name, action: 'error', error: e.message });
-      }
+      heartbeatPromises.push(
+        (async () => {
+          try {
+            const hbPromise = triggerHeartbeat(agent);
+            const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('heartbeat timeout (200s)')), 200000));
+            return await Promise.race([hbPromise, timeoutPromise]);
+          } catch (e) {
+            console.error(`[Heartbeat] ${agent.name}: ${e.message}`);
+            return { agent: agent.name, action: 'error', error: e.message };
+          }
+        })()
+      );
     }
+    
+    // Wait for all parallel heartbeats
+    results = await Promise.all(heartbeatPromises);
     return results;
   } finally {
     heartbeatRunning = false;
