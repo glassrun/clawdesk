@@ -444,6 +444,35 @@ async function runHeartbeatCycle() {
       }
     }
 
+    // Retry failed tasks after 15 minutes, up to 3 attempts per task
+    const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    let retryChanged = false;
+    const retryLog = [];
+    for (const t of tasks) {
+      if (t.status === 'failed') {
+        t.retry_count = t.retry_count || 0;
+        const changedAt = t._status_changed_at || t.created_at;
+        if (changedAt < fifteenMinAgo && t.retry_count < 3) {
+          t.status = 'pending';
+          t.retry_count += 1;
+          delete t._status_changed_at;
+          retryChanged = true;
+          retryLog.push({ task_id: t.id, title: t.title, attempt: t.retry_count, failed_since: changedAt });
+        }
+      }
+    }
+    if (retryChanged) {
+      saveYaml('tasks.yaml', tasks);
+      if (retryLog.length > 0) {
+        const hbs = loadYaml('heartbeats.yaml');
+        for (const s of retryLog) {
+          hbs.push({ id: nextId(hbs), agent_id: null, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'auto_retry', ...s }), status: 'ok' });
+        }
+        saveHeartbeats(hbs);
+        console.log(`[Heartbeat] Auto-retry: ${retryLog.length} failed task(s): ${retryLog.map(s => `${s.title} (${s.attempt}/3)`).join(', ')}`);
+      }
+    }
+
     const now = new Date();
     const agents = loadYaml('agents.yaml').filter(a => a.heartbeat_enabled && a.status === 'active');
     for (const agent of agents) {
