@@ -23,7 +23,16 @@ export default function HeartbeatsPage() {
   const [filter, setFilter] = useState<FilterStatus>("all");
   const { lastMessage, connected } = useStream();
 
-  const refreshFromStream = useCallback(() => { loadData(); }, []);
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await getHeartbeats();
+      setHeartbeats(res.data || []);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  }, []);
+
+  const refreshFromStream = useCallback(() => { loadData(); }, [loadData]);
   useEffect(() => { loadData(); }, []);
   useEffect(() => {
     if (!lastMessage) return;
