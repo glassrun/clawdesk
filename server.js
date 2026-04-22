@@ -11,6 +11,16 @@ const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const OPENCLAW_CLI = process.env.OPENCLAW_CLI || '/home/openclaw/.npm-global/bin/openclaw';
 const DATA_DIR = path.join(__dirname, 'data');
 
+// ===================== SSE CLIENTS =====================
+let sseClients = new Set();
+
+function broadcastSSE(event, data) {
+  const payload = JSON.stringify({ event, data, ts: Date.now() });
+  for (const client of sseClients) {
+    try { client.write(`event: ${event}\ndata: ${payload}\n\n`); } catch(e) { sseClients.delete(client); }
+  }
+}
+
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1h' }));
@@ -52,6 +62,9 @@ function saveYaml(file, data) {
   const tmp = fp + '.tmp';
   fs.writeFileSync(tmp, yaml.dump(data, { lineWidth: -1, noRefs: true }));
   fs.renameSync(tmp, fp);
+  if (file === 'tasks.yaml' && sseClients.size > 0) {
+    broadcastSSE('tasks', { tasks: data, ts: Date.now() });
+  }
 }
 
 const MAX_HEARTBEATS = 1000;
@@ -496,6 +509,7 @@ async function runHeartbeatCycle() {
     
     // Wait for all parallel heartbeats
     results = await Promise.all(heartbeatPromises);
+    broadcastSSE('heartbeat', { results, ts: Date.now() });
     return results;
   } finally {
     heartbeatRunning = false;
@@ -507,6 +521,8 @@ async function runHeartbeatCycle() {
     if (heartbeatStats.last10Ms.length > 10) heartbeatStats.last10Ms.shift();
     heartbeatStats.agentsProcessed += results.length;
     heartbeatStats.errors += results.filter(r => r.action === 'error').length;
+    // Broadcast all results to SSE clients
+    if (results.length > 0) broadcastSSE('heartbeat', { results, ts: Date.now() });
     // Periodic cleanup every 50 cycles (~50 min)
     if (heartbeatStats.cycles % 50 === 0 && heartbeatStats.cycles > 0) {
       const taskIds = new Set(loadYaml('tasks.yaml').map(t => t.id));
@@ -519,7 +535,13 @@ async function runHeartbeatCycle() {
 
 function startHeartbeatEngine() {
   setInterval(async () => {
-    try { const r = await runHeartbeatCycle(); if (r.length > 0) console.log(`[Heartbeat] ${r.map(x => `${x.agent}→${x.action}`).join(', ')}`); } catch (e) { console.error('[Heartbeat]', e.message); }
+    try {
+      const r = await runHeartbeatCycle();
+      if (r.length > 0) {
+        console.log(`[Heartbeat] ${r.map(x => `${x.agent}→${x.action}`).join(', ')}`);
+        broadcastSSE('heartbeat', { results: r, ts: Date.now() });
+      }
+    } catch (e) { console.error('[Heartbeat]', e.message); }
   }, 60000);
   console.log('[Heartbeat] Engine started (60s interval)');
 }
@@ -547,6 +569,19 @@ app.get('/api', (req, res) => {
 // Sync
 app.post('/api/agents/sync', async (req, res) => {
   try { const r = await syncFromOpenClaw(); res.json({ ok: true, synced: r.synced, count: r.synced.length }); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// SSE stream for live updates
+app.get('/api/stream', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+  // Send initial ping
+  res.write(`event: connected\ndata: ${JSON.stringify({ ts: Date.now() })}\n\n`);
+  sseClients.add(res);
+  req.on('close', () => sseClients.delete(res));
 });
 
 // Agents CRUD

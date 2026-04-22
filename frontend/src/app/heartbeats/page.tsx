@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { getHeartbeats, type Heartbeat } from "@/lib/api";
+import { useStream } from "@/lib/useStream";
 
 function timeAgo(dateStr: string) {
   if (!dateStr) return "never";
@@ -20,17 +21,14 @@ export default function HeartbeatsPage() {
   const [heartbeats, setHeartbeats] = useState<Heartbeat[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterStatus>("all");
+  const { lastMessage, connected } = useStream();
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const res = await getHeartbeats();
-      setHeartbeats(res.data || []);
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
-  };
-
+  const refreshFromStream = useCallback(() => { loadData(); }, []);
   useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    if (!lastMessage) return;
+    if (lastMessage.event === 'heartbeat') refreshFromStream();
+  }, [lastMessage, refreshFromStream]);
 
   const filtered = filter === "all"
     ? heartbeats

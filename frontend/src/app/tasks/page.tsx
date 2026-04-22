@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { getTasks, getAgents, getProjects, runTask, getTaskResults, deleteTask, createTask, updateTask, type Task, type Agent, type Project } from "@/lib/api";
+import { useStream } from "@/lib/useStream";
 
 function statusBadge(status: string) {
   const styles: Record<string, string> = {
@@ -51,6 +52,7 @@ export default function TasksPage() {
   const [taskResults, setTaskResults] = useState<Record<number, any[]>>({});
   const [runningTask, setRunningTask] = useState<number | null>(null);
   const [editTask, setEditTask] = useState<Task | null>(null);
+  const { lastMessage, connected } = useStream();
 
   // Form state
   const [formTitle, setFormTitle] = useState("");
@@ -82,7 +84,17 @@ export default function TasksPage() {
     finally { setLoading(false); }
   };
 
+  const refreshFromStream = useCallback(() => {
+    setPage(1);
+    loadData();
+  }, []);
+
   useEffect(() => { loadData(); }, [page, search, filterStatus, filterPriority, filterAgent, filterProject]);
+
+  useEffect(() => {
+    if (!lastMessage) return;
+    if (lastMessage.event === 'tasks') refreshFromStream();
+  }, [lastMessage, refreshFromStream]);
 
   const handleRun = async (id: number) => {
     setRunningTask(id);
