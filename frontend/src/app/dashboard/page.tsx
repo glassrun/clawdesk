@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { getDashboard, type Dashboard } from "@/lib/api";
+import { useStream } from "@/lib/useStream";
 
 function StatCard({ label, value, icon, color }: { label: string; value: number; icon: string; color: string }) {
   return (
@@ -18,17 +19,25 @@ function StatCard({ label, value, icon, color }: { label: string; value: number;
 export default function DashboardPage() {
   const [data, setData] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
+  const { lastMessage, connected } = useStream();
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const res = await getDashboard();
       setData(res);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
-  };
+  }, []);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [loadData]);
+
+  useEffect(() => {
+    if (!lastMessage) return;
+    if (lastMessage.event === "tasks" || lastMessage.event === "heartbeat") {
+      loadData();
+    }
+  }, [lastMessage, loadData]);
 
   if (loading) return (
     <div className="page-wrap">
@@ -51,7 +60,10 @@ export default function DashboardPage() {
           <h1 className="page-title">Dashboard</h1>
           <p className="page-subtitle">Overview of your agent orchestration</p>
         </div>
-        <button className="btn" onClick={loadData}>↻ Refresh</button>
+        <div className="flex items-center gap-2">
+          <span className={`w-2 h-2 rounded-full ${connected ? "bg-green-400" : "bg-red-400"}`} />
+          <button className="btn" onClick={loadData}>↻ Refresh</button>
+        </div>
       </div>
 
       {/* Stats Grid */}
@@ -120,7 +132,7 @@ export default function DashboardPage() {
                     <div className="list-item-title">{a.name}</div>
                     <div className="list-item-meta">{a.tasks_done || 0} tasks done</div>
                   </div>
-                  <span className={`status-dot ${a.status === 'active' ? 'active' : 'idle'}`} />
+                  <span className={`status-dot ${a.status === "active" ? "active" : "idle"}`} />
                 </div>
               ))
             )}

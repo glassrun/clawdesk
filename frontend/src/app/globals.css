@@ -502,3 +502,8 @@ hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
 .bg-red-400 { background-color: #f87171; }
 .w-1\.5 { width: 6px; }
 .h-1\.5 { height: 6px; }
+
+/* Live status indicator */
+.w-2 { width: 8px; }
+.h-2 { height: 8px; }
+.bg-green-400 { background-color: #34d399; }
