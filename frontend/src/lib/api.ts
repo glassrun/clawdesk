@@ -1,4 +1,4 @@
-const API_BASE = 'http://192.168.122.124:3777';
+export const API_BASE = 'http://192.168.122.124:3777';
 
 export async function api<T>(path: string, opts: RequestInit = {}): Promise<T> {
   console.log('API call:', path);
