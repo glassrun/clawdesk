@@ -3,6 +3,18 @@
 import React, { useEffect, useState } from "react";
 import { getDashboard, type Dashboard } from "@/lib/api";
 
+function StatCard({ label, value, icon, color }: { label: string; value: number; icon: string; color: string }) {
+  return (
+    <div className="stat-card">
+      <div className={`stat-icon ${color}`}>{icon}</div>
+      <div className="stat-body">
+        <div className="stat-value">{value}</div>
+        <div className="stat-label">{label}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const [data, setData] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
@@ -18,62 +30,101 @@ export default function DashboardPage() {
 
   useEffect(() => { loadData(); }, []);
 
-  if (loading) return <div className="page-wrap"><div className="text-center text-muted py-8">Loading...</div></div>;
+  if (loading) return (
+    <div className="page-wrap">
+      <div className="loading-grid">
+        {[1,2,3,4].map(i => <div key={i} className="skeleton-card" />)}
+      </div>
+    </div>
+  );
+
+  const completed = data?.completed_tasks || 0;
+  const failed = data?.failed_tasks || 0;
+  const total = completed + failed;
+  const successRate = total > 0 ? Math.round((completed / total) * 100) : 0;
 
   return (
     <div className="page-wrap">
-      <h1>Dashboard</h1>
+      {/* Header */}
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Dashboard</h1>
+          <p className="page-subtitle">Overview of your agent orchestration</p>
+        </div>
+        <button className="btn" onClick={loadData}>↻ Refresh</button>
+      </div>
 
-      <div className="flex gap-3 mt-4 flex-wrap">
-        <div className="card" style={{flex: '1 1 200px'}}>
-          <div className="card-content">
-            <div className="text-sm text-muted">Total Agents</div>
-            <div className="text-lg font-bold">{data?.agents?.length || 0}</div>
-          </div>
+      {/* Stats Grid */}
+      <div className="stats-grid">
+        <StatCard label="Total Agents" value={data?.agents?.length || 0} icon="⚡" color="blue" />
+        <StatCard label="Active Projects" value={data?.projects?.length || 0} icon="📁" color="purple" />
+        <StatCard label="Completed Tasks" value={completed} icon="✅" color="green" />
+        <StatCard label="Failed Tasks" value={failed} icon="❌" color="red" />
+      </div>
+
+      {/* Success Rate */}
+      <div className="progress-card">
+        <div className="progress-header">
+          <span className="progress-title">Task Success Rate</span>
+          <span className="progress-pct">{successRate}%</span>
         </div>
-        <div className="card" style={{flex: '1 1 200px'}}>
-          <div className="card-content">
-            <div className="text-sm text-muted">Active Projects</div>
-            <div className="text-lg font-bold">{data?.projects?.length || 0}</div>
-          </div>
+        <div className="progress-bar">
+          <div className="progress-fill" style={{ width: `${successRate}%` }} />
         </div>
-        <div className="card" style={{flex: '1 1 200px'}}>
-          <div className="card-content">
-            <div className="text-sm text-muted">Completed Tasks</div>
-            <div className="text-lg font-bold">{data?.completed_tasks || 0}</div>
-          </div>
-        </div>
-        <div className="card" style={{flex: '1 1 200px'}}>
-          <div className="card-content">
-            <div className="text-sm text-muted">Failed Tasks</div>
-            <div className="text-lg font-bold">{data?.failed_tasks || 0}</div>
-          </div>
+        <div className="progress-footer">
+          <span>{completed} succeeded</span>
+          <span>{failed} failed</span>
         </div>
       </div>
 
-      <div className="card mt-4">
-        <div className="card-header"><h3>Projects</h3></div>
-        <div className="card-content">
-          {data?.projects?.length === 0 ? <div className="text-muted">No projects</div> :
-          data?.projects?.map((p: any) => (
-            <div key={p.id} className="flex items-center justify-between pb-2 border-b">
-              <span>{p.title}</span>
-              <span className="text-sm text-muted">{p.task_done}/{p.task_total} tasks</span>
-            </div>
-          ))}
+      {/* Two-col layout */}
+      <div className="two-col">
+        {/* Projects */}
+        <div className="panel">
+          <div className="panel-header">
+            <h2>📁 Projects</h2>
+          </div>
+          <div className="panel-body">
+            {data?.projects?.length === 0 ? (
+              <div className="empty-state">No projects yet</div>
+            ) : (
+              data?.projects?.map((p: any) => (
+                <div key={p.id} className="list-item">
+                  <div className="list-item-info">
+                    <div className="list-item-title">{p.title}</div>
+                    <div className="list-item-meta">{p.task_done}/{p.task_total} tasks</div>
+                  </div>
+                  <div className="list-item-badge">
+                    {p.task_total > 0 ? (
+                      <span className="pct">{p.completion_pct}%</span>
+                    ) : null}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
-      </div>
 
-      <div className="card mt-4">
-        <div className="card-header"><h3>Agents</h3></div>
-        <div className="card-content">
-          {data?.agents?.length === 0 ? <div className="text-muted">No agents</div> :
-          data?.agents?.map((a: any) => (
-            <div key={a.id} className="flex items-center justify-between pb-2 border-b">
-              <span>{a.name}</span>
-              <span className={"badge " + (a.status === 'active' ? 'status-done' : 'status-pending')}>{a.status}</span>
-            </div>
-          ))}
+        {/* Agents */}
+        <div className="panel">
+          <div className="panel-header">
+            <h2>🤖 Agents</h2>
+          </div>
+          <div className="panel-body">
+            {data?.agents?.length === 0 ? (
+              <div className="empty-state">No agents yet</div>
+            ) : (
+              data?.agents?.map((a: any) => (
+                <div key={a.id} className="list-item">
+                  <div className="list-item-info">
+                    <div className="list-item-title">{a.name}</div>
+                    <div className="list-item-meta">{a.tasks_done || 0} tasks done</div>
+                  </div>
+                  <span className={`status-dot ${a.status === 'active' ? 'active' : 'idle'}`} />
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
     </div>
