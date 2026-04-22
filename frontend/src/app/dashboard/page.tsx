@@ -21,6 +21,13 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const { lastMessage, connected } = useStream();
 
+  const refreshData = useCallback(async () => {
+    try {
+      const res = await getDashboard();
+      setData(res);
+    } catch (e) { console.error(e); }
+  }, []);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -35,9 +42,9 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!lastMessage) return;
     if (lastMessage.event === "tasks" || lastMessage.event === "heartbeat") {
-      loadData();
+      refreshData();
     }
-  }, [lastMessage, loadData]);
+  }, [lastMessage, refreshData]);
 
   if (loading) return (
     <div className="page-wrap">

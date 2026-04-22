@@ -61,15 +61,32 @@ export default function TasksPage() {
   const [formAgent, setFormAgent] = useState("");
   const [formProject, setFormProject] = useState(1);
 
-  const loadData = async () => {
+  const buildParams = useCallback(() => {
+    const params: any = { page, limit: 30 };
+    if (search) params.search = search;
+    if (filterStatus) params.status = filterStatus;
+    if (filterPriority) params.priority = filterPriority;
+    if (filterAgent) params.agent_id = filterAgent;
+    if (filterProject) params.project_id = filterProject;
+    return params;
+  }, [page, search, filterStatus, filterPriority, filterAgent, filterProject]);
+
+  // Silent refresh — no loading state, used for SSE updates
+  const refreshData = useCallback(async () => {
+    try {
+      const params = buildParams();
+      const tasksRes = await getTasks(params);
+      setTasks(tasksRes.data || []);
+      setTotal(tasksRes.total);
+      setPages(tasksRes.pages);
+    } catch (e) { console.error(e); }
+  }, [buildParams]);
+
+  // Full load with loading state
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const params: any = { page, limit: 30 };
-      if (search) params.search = search;
-      if (filterStatus) params.status = filterStatus;
-      if (filterPriority) params.priority = filterPriority;
-      if (filterAgent) params.agent_id = filterAgent;
-      if (filterProject) params.project_id = filterProject;
+      const params = buildParams();
       const [tasksRes, agentsRes, projectsRes] = await Promise.all([
         getTasks(params),
         getAgents(),
@@ -82,19 +99,17 @@ export default function TasksPage() {
       setProjects(projectsRes);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
-  };
+  }, [buildParams]);
 
-  const refreshFromStream = useCallback(() => {
-    setPage(1);
-    loadData();
-  }, []);
-
-  useEffect(() => { loadData(); }, [page, search, filterStatus, filterPriority, filterAgent, filterProject]);
+  useEffect(() => { loadData(); }, [loadData]);
 
   useEffect(() => {
     if (!lastMessage) return;
-    if (lastMessage.event === 'tasks') refreshFromStream();
-  }, [lastMessage, refreshFromStream]);
+    if (lastMessage.event === "tasks") {
+      setPage(1);
+      refreshData();
+    }
+  }, [lastMessage, refreshData]);
 
   const handleRun = async (id: number) => {
     setRunningTask(id);
@@ -121,7 +136,7 @@ export default function TasksPage() {
 
   const handleStatusChange = async (id: number, status: string) => {
     await updateTask(id, { status });
-    loadData();
+    refreshData();
   };
 
   const toggleResults = async (id: number) => {
@@ -177,7 +192,10 @@ export default function TasksPage() {
     <div className="page-wrap">
       <div className="flex items-center justify-between">
         <h1>All Tasks</h1>
-        <button className="btn-primary" onClick={() => setShowAddModal(true)}>+ Add Task</button>
+        <div className="flex items-center gap-2">
+          <span className={`w-2 h-2 rounded-full ${connected ? "bg-green-400" : "bg-red-400"}`} />
+          <button className="btn-primary" onClick={() => setShowAddModal(true)}>+ Add Task</button>
+        </div>
       </div>
 
       <div className="card mt-4">
@@ -257,7 +275,7 @@ export default function TasksPage() {
                     </td>
                   </tr>
                   {expandedResults === t.id && taskResults[t.id] && (
-                    <tr><td colSpan={8} className="p-3" style={{background: 'var(--bg)'}}>
+                    <tr><td colSpan={8} className="p-3" style={{background: "var(--bg)"}}>
                       <div className="text-xs max-h-40 overflow-y-auto">
                         {taskResults[t.id].length === 0 ? <div className="text-soft">No results</div> : taskResults[t.id].map((r: any, i: number) => (
                           <div key={i} className="border-b pb-2 mb-2">

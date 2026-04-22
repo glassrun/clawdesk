@@ -23,6 +23,13 @@ export default function HeartbeatsPage() {
   const [filter, setFilter] = useState<FilterStatus>("all");
   const { lastMessage, connected } = useStream();
 
+  const refreshData = useCallback(async () => {
+    try {
+      const res = await getHeartbeats();
+      setHeartbeats(res.data || []);
+    } catch (e) { console.error(e); }
+  }, []);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -32,12 +39,12 @@ export default function HeartbeatsPage() {
     finally { setLoading(false); }
   }, []);
 
-  const refreshFromStream = useCallback(() => { loadData(); }, [loadData]);
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [loadData]);
+
   useEffect(() => {
     if (!lastMessage) return;
-    if (lastMessage.event === 'heartbeat') refreshFromStream();
-  }, [lastMessage, refreshFromStream]);
+    if (lastMessage.event === "heartbeat") refreshData();
+  }, [lastMessage, refreshData]);
 
   const filtered = filter === "all"
     ? heartbeats
@@ -60,7 +67,10 @@ export default function HeartbeatsPage() {
             {stats.total} total · {stats.ok} healthy · {stats.warning} warnings · {stats.failed} failed
           </p>
         </div>
-        <button className="btn" onClick={loadData}>🔄 Refresh</button>
+        <div className="flex items-center gap-2">
+          <span className={`w-2 h-2 rounded-full ${connected ? "bg-green-400" : "bg-red-400"}`} />
+          <button className="btn" onClick={loadData}>🔄 Refresh</button>
+        </div>
       </div>
 
       {/* Filter Tabs */}
