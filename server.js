@@ -283,7 +283,7 @@ async function executeTask(agent, task) {
     message += `\nCRITICAL: Write ALL files to the PROJECT workspace, not your own workspace.`;
     message += `\nProject workspace: ${project.workspace_path}`;
     message += `\nUse the write tool with FULL paths: ${project.workspace_path}/[filename]`;
-    message += `\nUse read to check existing files in the project workspace first.`;
+    message += `\nUse the read tool to open and fully read ALL files in the ${project.workspace_path} folder. Then summarize the key information from them before starting your work.".`;
   }
   message += `\nWhen finished, list every file you created with its path.`;
   message += `\n`;
@@ -694,7 +694,7 @@ app.get('/api/heartbeats', (req, res) => {
   const agents = loadYaml('agents.yaml');
   let all = loadYaml('heartbeats.yaml').sort((a, b) => b.id - a.id);
   if (req.query.status) all = all.filter(h => h.status === req.query.status);
-  if (req.query.agent_id) all = all.filter(h => h.agent_id === +req.query.agent_id);
+  if (req.query.agent_id) all = all.filter(h => String(h.agent_id) === String(req.query.agent_id));
   const page = Math.max(1, +(req.query.page) || 1);
   const limit = Math.min(200, Math.max(1, +(req.query.limit) || 50));
   const total = all.length;
@@ -914,8 +914,8 @@ app.post('/api/projects/:id/tasks/from-agent', (req, res) => {
 // Task summary — lightweight aggregate counts without fetching all tasks
 app.get('/api/tasks/summary', (req, res) => {
   let tasks = loadYaml('tasks.yaml');
-  if (req.query.project_id) tasks = tasks.filter(t => t.project_id === +req.query.project_id);
-  if (req.query.agent_id) tasks = tasks.filter(t => t.assigned_agent_id === +req.query.agent_id);
+  if (req.query.project_id) tasks = tasks.filter(t => String(t.project_id) === String(req.query.project_id));
+  if (req.query.agent_id) tasks = tasks.filter(t => String(t.assigned_agent_id) === String(req.query.agent_id));
   const byStatus = {}; const byPriority = {}; const byProject = {}; const byAgent = {};
   let totalRetries = 0;
   for (const t of tasks) {
@@ -1228,9 +1228,9 @@ app.get('/api/tasks', (req, res) => {
   let tasks = loadYaml('tasks.yaml');
   // Filters
   if (req.query.status) tasks = tasks.filter(t => t.status === req.query.status);
-  if (req.query.agent_id) tasks = tasks.filter(t => t.assigned_agent_id === +req.query.agent_id);
+  if (req.query.agent_id) tasks = tasks.filter(t => String(t.assigned_agent_id) === String(req.query.agent_id));
   if (req.query.priority) tasks = tasks.filter(t => t.priority === req.query.priority);
-  if (req.query.project_id) tasks = tasks.filter(t => t.project_id === +req.query.project_id);
+  if (req.query.project_id) tasks = tasks.filter(t => String(t.project_id) === String(req.query.project_id));
   if (req.query.search) { const s = req.query.search.toLowerCase(); tasks = tasks.filter(t => t.title.toLowerCase().includes(s)); }
   // Sort
   const sortBy = req.query.sort_by || 'priority';
