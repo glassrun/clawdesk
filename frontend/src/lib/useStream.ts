@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
+import { API_BASE } from "./api";
 
 export type StreamEvent = "tasks" | "heartbeat" | "connected";
 
@@ -16,9 +17,7 @@ export function useStream() {
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
-    const proto = window.location.protocol === "https:" ? "https:" : "http:";
-    const host = window.location.host;
-    const url = `${proto}//${host}/api/stream`;
+    const url = `${API_BASE}/api/stream`;
     const es = new EventSource(url);
     esRef.current = es;
 
