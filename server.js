@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { exec, execFile } = require('child_process');
 const db = require('./db');
+const { nextId } = db;
 const cors = require('cors');
 
 const app = express();
@@ -108,70 +109,46 @@ function deleteOpenClawAgent(agentId) {
 }
 
 function syncFromOpenClaw() {
-  // Direct filesystem scan — faster and more reliable than CLI (no daemon IPC needed)
+  // Use `openclaw agents list --json` via CLI only — no fallback
+  const CLI = 'node /home/openclaw/.npm-global/lib/node_modules/openclaw/openclaw.mjs';
+  const TIMEOUT_MS = 120000; // 2 minutes — CLI can be slow
   return new Promise((resolve, reject) => {
-    try {
-      const AGENTS_DIR = '/home/openclaw/.openclaw/agents';
-      const agents = db.loadAgents();
-      const existingMap = new Map(agents.map(a => [a.openclaw_agent_id, a]));
-
-      let added = 0, updated = 0;
-      for (const agentId of fs.readdirSync(AGENTS_DIR)) {
-        const agentDir = path.join(AGENTS_DIR, agentId);
-        if (!fs.statSync(agentDir).isDirectory()) continue;
-
-        let identityName = agentId;
-        let model = 'minimax/MiniMax-M2.7';
-        try {
-          const authState = path.join(agentDir, 'auth-state.json');
-          if (fs.existsSync(authState)) {
-            const d = JSON.parse(fs.readFileSync(authState, 'utf8'));
-            identityName = d.identityName || d.name || agentId;
+    const { exec } = require('child_process');
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; cp.kill(); }, TIMEOUT_MS);
+    const cp = exec(`${CLI} agents list --json`, { timeout: TIMEOUT_MS }, (err, stdout, stderr) => {
+      clearTimeout(timer);
+      if (timedOut) { reject(new Error('CLI timed out after 120s')); return; }
+      if (err) { reject(new Error(`CLI error: ${err.message}`)); return; }
+      try {
+        const cliAgents = JSON.parse(stdout);
+        const agents = db.loadAgents();
+        const existingMap = new Map(agents.map(a => [a.openclaw_agent_id, a]));
+        let added = 0, updated = 0;
+        const maxId = Math.max(0, ...agents.map(a => a.id));
+        let nextId = maxId + 1;
+        for (const ca of cliAgents) {
+          const id = ca.id;
+          if (existingMap.has(id)) {
+            const e = existingMap.get(id);
+            e.name = ca.identityName || ca.name || id;
+            e.status = 'active';
+            updated++;
+          } else {
+            agents.push({ id: nextId++, openclaw_agent_id: id, name: ca.identityName || ca.name || id, status: 'active', budget_limit: 0, budget_spent: 0, heartbeat_enabled: 1, heartbeat_interval: 60, last_heartbeat: null, tasks_done: 0, tasks_failed: 0, created_at: new Date().toISOString(), model: ca.model || 'minimax/MiniMax-M2.7' });
+            added++;
           }
-        } catch {}
-        try {
-          const modelsFile = path.join(agentDir, 'models.json');
-          if (fs.existsSync(modelsFile)) {
-            const d = JSON.parse(fs.readFileSync(modelsFile, 'utf8'));
-            if (d.model) model = d.model;
-          }
-        } catch {}
-
-        if (existingMap.has(agentId)) {
-          const e = existingMap.get(agentId);
-          e.name = identityName;
-          e.status = 'active';
-          updated++;
-        } else {
-          agents.push({
-            id: nextId('agents'),
-            openclaw_agent_id: agentId,
-            name: identityName,
-            status: 'active',
-            budget_limit: 0, budget_spent: 0,
-            heartbeat_enabled: 1, heartbeat_interval: 60,
-            last_heartbeat: null,
-            tasks_done: 0, tasks_failed: 0,
-            created_at: new Date().toISOString(),
-            model
-          });
-          added++;
         }
-      }
-
-      // Remove agents not present on filesystem
-      const agentDirs = new Set(fs.readdirSync(AGENTS_DIR));
-      const before = agents.length;
-      const filtered = agents.filter(a => agentDirs.has(a.openclaw_agent_id));
-      const removed = before - filtered.length;
-      db.saveAgents(filtered);
-
-      resolve({ synced: filtered.map(a => a.openclaw_agent_id), added, updated, removed });
-    } catch (e) {
-      reject(e);
-    }
+        const cliIds = new Set(cliAgents.map(ca => ca.id));
+        const filtered = agents.filter(a => cliIds.has(a.openclaw_agent_id));
+        db.saveAgents(filtered);
+        resolve({ synced: filtered.map(a => a.openclaw_agent_id), added, updated, removed: 0, source: 'cli' });
+      } catch (e) { reject(new Error(`CLI parse error: ${e.message}`)); }
+    });
   });
 }
+
+// syncFromFilesystem removed — CLI only
 
 // ===================== SEED =====================
 
@@ -1320,7 +1297,7 @@ app.use((err, req, res, _next) => {
 const server = app.listen(PORT, () => {
   console.log(`ClawDesk running on http://localhost:${PORT}`);
   // Sync agents from OpenClaw on startup
-  syncFromOpenClaw().then(r => { console.log(`[Init] Synced ${r.synced.length} agent(s) from OpenClaw`); }).catch(e => { console.log(`[Init] OpenClaw sync failed: ${e.message}`); });
+  syncFromOpenClaw().then(r => { console.log(`[Init] Synced ${r.synced.length} agent(s) from OpenClaw (source: ${r.source})`); }).catch(e => { console.log(`[Init] OpenClaw sync failed: ${e.message}`); });
   startHeartbeatEngine();
 });
 
