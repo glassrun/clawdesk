@@ -108,47 +108,68 @@ function deleteOpenClawAgent(agentId) {
 }
 
 function syncFromOpenClaw() {
-  return new Promise((resolve, reject) => { 
-    exec(`${OPENCLAW_CLI} agents list --json`, { timeout: 120000 }, (err, stdout, stderr) => {
-      if (err) return reject(new Error(`Failed: ${err.message}`));
-      let openclawAgents = [];
-      try {
-        openclawAgents = JSON.parse(stdout);
-      } catch (e) {
-        return reject(new Error(`Failed to parse JSON: ${e.message}`));
-      }
-      // Extract agent IDs from JSON (use id field, not routes/providers)
-      const agentIds = openclawAgents.map(a => a.id);
-      if (agentIds.length === 0) return resolve({ synced: [] });
-      let agents = db.loadAgents();
-      for (const a of openclawAgents) {
-        const id = a.id;
-        const name = a.identityName || a.name || id;
-        const existing = agents.find(x => x.openclaw_agent_id === id);
-        if (existing) {
-          existing.status = 'active';
-          if (existing.name !== name) existing.name = name;
+  // Direct filesystem scan — faster and more reliable than CLI (no daemon IPC needed)
+  return new Promise((resolve, reject) => {
+    try {
+      const AGENTS_DIR = '/home/openclaw/.openclaw/agents';
+      const agents = db.loadAgents();
+      const existingMap = new Map(agents.map(a => [a.openclaw_agent_id, a]));
+
+      let added = 0, updated = 0;
+      for (const agentId of fs.readdirSync(AGENTS_DIR)) {
+        const agentDir = path.join(AGENTS_DIR, agentId);
+        if (!fs.statSync(agentDir).isDirectory()) continue;
+
+        let identityName = agentId;
+        let model = 'minimax/MiniMax-M2.7';
+        try {
+          const authState = path.join(agentDir, 'auth-state.json');
+          if (fs.existsSync(authState)) {
+            const d = JSON.parse(fs.readFileSync(authState, 'utf8'));
+            identityName = d.identityName || d.name || agentId;
+          }
+        } catch {}
+        try {
+          const modelsFile = path.join(agentDir, 'models.json');
+          if (fs.existsSync(modelsFile)) {
+            const d = JSON.parse(fs.readFileSync(modelsFile, 'utf8'));
+            if (d.model) model = d.model;
+          }
+        } catch {}
+
+        if (existingMap.has(agentId)) {
+          const e = existingMap.get(agentId);
+          e.name = identityName;
+          e.status = 'active';
+          updated++;
         } else {
           agents.push({
-            id: id, // Use OpenClaw agent ID directly as the primary key
-            openclaw_agent_id: id,
-            name: name,
+            id: nextId('agents'),
+            openclaw_agent_id: agentId,
+            name: identityName,
             status: 'active',
             budget_limit: 0, budget_spent: 0,
-            heartbeat_enabled: 1, heartbeat_interval: 1,
-            last_heartbeat: null, created_at: new Date().toISOString()
+            heartbeat_enabled: 1, heartbeat_interval: 60,
+            last_heartbeat: null,
+            tasks_done: 0, tasks_failed: 0,
+            created_at: new Date().toISOString(),
+            model
           });
+          added++;
         }
       }
-      // Remove agents not present in OpenClaw
-      const syncedSet = new Set(agentIds);
-      let cleaned = agents.length;
-      agents = agents.filter(a => syncedSet.has(a.openclaw_agent_id));
-      cleaned = cleaned - agents.length;
-      db.saveAgents(agents);
-      if (cleaned > 0) console.log(`[Sync] Removed ${cleaned} agent(s) not in OpenClaw`);
-      resolve({ synced: agentIds });
-    });
+
+      // Remove agents not present on filesystem
+      const agentDirs = new Set(fs.readdirSync(AGENTS_DIR));
+      const before = agents.length;
+      const filtered = agents.filter(a => agentDirs.has(a.openclaw_agent_id));
+      const removed = before - filtered.length;
+      db.saveAgents(filtered);
+
+      resolve({ synced: filtered.map(a => a.openclaw_agent_id), added, updated, removed });
+    } catch (e) {
+      reject(e);
+    }
   });
 }
 
