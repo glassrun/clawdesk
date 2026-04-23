@@ -154,42 +154,6 @@ function syncFromOpenClaw() {
 
 // ===================== SEED =====================
 
-function seed() {
-  const projects = db.loadProjects();
-  if (projects.length > 0) return;
-  const agents = db.loadAgents();
-  const agentMap = {}; agents.forEach(a => { agentMap[a.openclaw_agent_id] = a.id; });
-
-  const now = new Date().toISOString();
-  db.saveProjects([
-    { id: 1, title: 'Launch Q2 Campaign', description: 'Prepare and execute the Q2 marketing campaign across all channels.', workspace_path: '', status: 'active', created_at: now },
-    { id: 2, title: 'Internal Tooling Upgrade', description: 'Modernize internal dashboards and automation scripts.', workspace_path: '', status: 'active', created_at: now }
-  ]);
-
-  let tid = 0;
-  const t = (pid, agent, title, desc, status, dep, priority) => ({ id: ++tid, project_id: pid, assigned_agent_id: agentMap[agent] || null, title, description: desc, status, dependency_id: dep, creates_agent: null, created_by_agent_id: null, priority: priority || 'medium', created_at: now, completed_at: status === 'done' ? now : null });
-  db.saveTasks([
-    t(1, 'content-studio', 'Design campaign visuals', 'Create banner ads, social media graphics, and email templates', 'in_progress', null, 'high'),
-           t(1, 'main', 'Review campaign strategy', 'Review and approve Q2 strategy and budget', 'pending', null, 'medium'),
-           t(1, 'project-manager', 'Set up tracking', 'Install analytics tracking on landing pages', 'pending', null, 'medium'),
-           t(1, 'content-studio', 'Write ad copy', 'Draft copy for all Q2 ad placements', 'pending', 1, 'high'),
-           t(1, 'main', 'Final launch approval', 'Final review and sign-off', 'pending', 4, 'low'),
-           t(2, 'project-manager', 'Audit current dashboards', 'Document existing dashboard inventory', 'done', null, 'medium'),
-           t(2, 'content-studio', 'Design new dashboard layout', 'Create wireframes for updated dashboards', 'in_progress', 6, 'medium'),
-           t(2, 'project-manager', 'Implement dashboard backend', 'Build API endpoints for new dashboard data', 'pending', 7, 'high'),
-           t(2, 'main', 'Approve dashboard budget', 'Review and approve budget for rebuild', 'pending', null, 'low')
-  ]);
-  db.saveHeartbeats([]);
-  db.saveTaskResults([]);
-}
-
-// Init: sync agents then seed
-if (db.loadAgents().length === 0) {
-  syncFromOpenClaw().then(r => { console.log('[Seed] Synced:', r.synced.join(', ')); seed(); }).catch(e => {
-    console.log('[Seed] Sync failed:', e.message);
-    seed();
-  });
-}
 
 // ===================== TRACKING HELPERS =====================
 
