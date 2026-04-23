@@ -2,7 +2,6 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const { exec, execFile } = require('child_process');
-const yaml = require('js-yaml');
 const db = require('./db');
 const cors = require('cors');
 
@@ -39,41 +38,13 @@ app.use((req, res, next) => {
   next();
 });
 
-// ===================== YAML STORAGE =====================
+// ===================== DB INIT =====================
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-// ===================== YAML-to-DB migration =====================
-// On first startup, migrate any existing YAML files to SQLite
-function migrateYamlToDb() {
-  const yamlFiles = ['agents.yaml', 'projects.yaml', 'tasks.yaml', 'heartbeats.yaml', 'task_results.yaml'];
-  for (const f of yamlFiles) {
-    const fp = path.join(DATA_DIR, f);
-    if (fs.existsSync(fp)) {
-      try {
-        const data = yaml.load(fs.readFileSync(fp, 'utf8'));
-        if (Array.isArray(data) && data.length > 0) {
-          console.log(`[Migration] ${f} has ${data.length} records — skipping (DB already initialized)`);
-          return false;
-        }
-      } catch(e) {}
-    }
-  }
-  return true;
-}
-
-// seedYaml shim — routes old YAML-style calls to new DB functions
-function seedYaml(file, data) {
-  switch(file) {
-    case 'agents.yaml': db.saveAgents(data); break;
-    case 'projects.yaml': db.saveProjects(data); break;
-    case 'tasks.yaml':
-      db.saveTasks(data);
-      if (sseClients.size > 0) broadcastSSE('tasks', { tasks: data, ts: Date.now() });
-      break;
-    case 'heartbeats.yaml': db.saveHeartbeats(data); break;
-    case 'task_results.yaml': db.saveTaskResults(data); break;
-  }
+// SSE broadcast helper — used after db.saveTasks()
+function broadcastTaskUpdate(tasks) {
+  if (sseClients.size > 0) broadcastSSE('tasks', { tasks, ts: Date.now() });
 }
 
 function normalizeTask(t, agents) {
@@ -174,7 +145,7 @@ function syncFromOpenClaw() {
       let cleaned = agents.length;
       agents = agents.filter(a => syncedSet.has(a.openclaw_agent_id));
       cleaned = cleaned - agents.length;
-      seedYaml('agents.yaml', agents);
+      db.saveAgents(agents);
       if (cleaned > 0) console.log(`[Sync] Removed ${cleaned} agent(s) not in OpenClaw`);
       resolve({ synced: agentIds });
     });
@@ -190,14 +161,14 @@ function seed() {
   const agentMap = {}; agents.forEach(a => { agentMap[a.openclaw_agent_id] = a.id; });
 
   const now = new Date().toISOString();
-  seedYaml('projects.yaml', [
+  db.saveProjects([
     { id: 1, title: 'Launch Q2 Campaign', description: 'Prepare and execute the Q2 marketing campaign across all channels.', workspace_path: '', status: 'active', created_at: now },
     { id: 2, title: 'Internal Tooling Upgrade', description: 'Modernize internal dashboards and automation scripts.', workspace_path: '', status: 'active', created_at: now }
   ]);
 
   let tid = 0;
   const t = (pid, agent, title, desc, status, dep, priority) => ({ id: ++tid, project_id: pid, assigned_agent_id: agentMap[agent] || null, title, description: desc, status, dependency_id: dep, creates_agent: null, created_by_agent_id: null, priority: priority || 'medium', created_at: now, completed_at: status === 'done' ? now : null });
-  seedYaml('tasks.yaml', [
+  db.saveTasks([
     t(1, 'content-studio', 'Design campaign visuals', 'Create banner ads, social media graphics, and email templates', 'in_progress', null, 'high'),
            t(1, 'main', 'Review campaign strategy', 'Review and approve Q2 strategy and budget', 'pending', null, 'medium'),
            t(1, 'project-manager', 'Set up tracking', 'Install analytics tracking on landing pages', 'pending', null, 'medium'),
@@ -208,8 +179,8 @@ function seed() {
            t(2, 'project-manager', 'Implement dashboard backend', 'Build API endpoints for new dashboard data', 'pending', 7, 'high'),
            t(2, 'main', 'Approve dashboard budget', 'Review and approve budget for rebuild', 'pending', null, 'low')
   ]);
-  seedYaml('heartbeats.yaml', []);
-  seedYaml('task_results.yaml', []);
+  db.db.saveHeartbeats([]);
+  db.db.saveTaskResults([]);
 }
 
 // Init: sync agents then seed
@@ -232,21 +203,21 @@ function setTaskStatus(taskId, newStatus) {
   t._status_changed_at = new Date().toISOString();
   if (newStatus === 'done') t.completed_at = new Date().toISOString();
   else if (oldStatus === 'done') t.completed_at = null;
-  seedYaml('tasks.yaml', tasks);
+  db.saveTasks(tasks);
   // Auto-complete project if all tasks are done
   if (newStatus === 'done') {
     const projectTasks = tasks.filter(x => x.project_id === t.project_id);
     if (projectTasks.length > 0 && projectTasks.every(x => x.status === 'done')) {
       const projects = db.loadProjects();
       const p = projects.find(x => x.id === t.project_id);
-      if (p && p.status === 'active') { p.status = 'completed'; seedYaml('projects.yaml', projects); console.log(`[Auto] Project "${p.title}" marked completed — all tasks done`); }
+      if (p && p.status === 'active') { p.status = 'completed'; db.saveProjects(projects); console.log(`[Auto] Project "${p.title}" marked completed — all tasks done`); }
     }
   }
   // Reopen project if task is un-done
   if (oldStatus === 'done' && newStatus !== 'done') {
     const projects = db.loadProjects();
     const p = projects.find(x => x.id === t.project_id);
-    if (p && p.status === 'completed') { p.status = 'active'; seedYaml('projects.yaml', projects); console.log(`[Auto] Project "${p.title}" reopened — task un-completed`); }
+    if (p && p.status === 'completed') { p.status = 'active'; db.saveProjects(projects); console.log(`[Auto] Project "${p.title}" reopened — task un-completed`); }
   }
 
   // Recurring task: clone on completion
@@ -263,7 +234,7 @@ function setTaskStatus(taskId, newStatus) {
       run_count: (t.run_count || 0) + 1
     };
     tasks.push(newTask);
-    seedYaml('tasks.yaml', tasks);
+    db.saveTasks(tasks);
     console.log(`[Recurring] Task "${t.title}" completed, created repeat run #${newTask.run_count}`);
   }
 
@@ -325,7 +296,7 @@ async function executeTask(agent, task) {
                     heartbeat_enabled: 1, heartbeat_interval: 1,
                     last_heartbeat: null, created_at: new Date().toISOString()
         });
-        seedYaml('agents.yaml', agents);
+        db.saveAgents(agents);
       }
       createdAgentInfo = { agent_id: task.creates_agent, workspace: oc.workspace };
       message += `\n[Created agent: ${task.creates_agent}]`;
@@ -346,7 +317,7 @@ async function executeTask(agent, task) {
     const resultObj = { id: nextId(results), task_id: task.id, agent_id: agent.id, input: message, output, duration_ms: durationMs, executed_at: new Date().toISOString() };
     if (createdAgentInfo) resultObj.created_agent = createdAgentInfo;
     results.push(resultObj);
-    saveTaskResults(results);
+    db.saveTaskResults(results);
     const ret = { action: 'completed', task_id: task.id, task_title: task.title, agent_id: agent.openclaw_agent_id };
     if (createdAgentInfo) ret.created_agent = createdAgentInfo;
     return ret;
@@ -357,7 +328,7 @@ async function executeTask(agent, task) {
     const resultObj = { id: nextId(results), task_id: task.id, agent_id: agent.id, input: message, output: `Error: ${err.message}`, duration_ms: durationMs, executed_at: new Date().toISOString() };
     if (createdAgentInfo) resultObj.created_agent = createdAgentInfo;
     results.push(resultObj);
-    saveTaskResults(results);
+    db.saveTaskResults(results);
     const ret = { action: 'failed', task_id: task.id, task_title: task.title, agent_id: agent.openclaw_agent_id, error: err.message };
     if (createdAgentInfo) ret.created_agent = createdAgentInfo;
     return ret;
@@ -375,10 +346,10 @@ async function triggerHeartbeat(agent) {
     const agents = db.loadAgents();
     const a = agents.find(x => x.id === agent.id);
     if (a) a.last_heartbeat = new Date().toISOString();
-    seedYaml('agents.yaml', agents);
+    db.saveAgents(agents);
     const hbs = db.loadHeartbeats();
     hbs.push({ id: nextId(hbs), agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'no_pending_tasks' }), status: 'idle' });
-    saveHeartbeats(hbs);
+    db.saveHeartbeats(hbs);
     return { agent: agent.name, action: 'idle' };
   }
   const task = pending[0];
@@ -389,20 +360,20 @@ async function triggerHeartbeat(agent) {
     const agents = db.loadAgents();
     const a = agents.find(x => x.id === agent.id);
     if (a) a.last_heartbeat = new Date().toISOString();
-    seedYaml('agents.yaml', agents);
+    db.saveAgents(agents);
     const hbs = db.loadHeartbeats();
     hbs.push({ id: nextId(hbs), agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: JSON.stringify(result), status: result.action === 'failed' ? 'error' : 'ok' });
-    saveHeartbeats(hbs);
+    db.saveHeartbeats(hbs);
     return { agent: agent.name, ...result };
   } catch (err) {
     setTaskStatus(task.id, 'pending');
     const agents = db.loadAgents();
     const a = agents.find(x => x.id === agent.id);
     if (a) a.last_heartbeat = new Date().toISOString();
-    seedYaml('agents.yaml', agents);
+    db.saveAgents(agents);
     const hbs = db.loadHeartbeats();
     hbs.push({ id: nextId(hbs), agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'error', error: err.message }), status: 'error' });
-    saveHeartbeats(hbs);
+    db.saveHeartbeats(hbs);
     return { agent: agent.name, action: 'error', error: err.message };
   }
 }
@@ -433,13 +404,13 @@ async function runHeartbeatCycle() {
       }
     }
     if (changed) {
-      seedYaml('tasks.yaml', tasks);
+      db.saveTasks(tasks);
       if (stuckResetLog.length > 0) {
         const hbs = db.loadHeartbeats();
         for (const s of stuckResetLog) {
           hbs.push({ id: nextId(hbs), agent_id: null, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'stuck_reset', ...s }), status: 'warning' });
         }
-        saveHeartbeats(hbs);
+        db.saveHeartbeats(hbs);
         console.log(`[Heartbeat] Reset ${stuckResetLog.length} stuck task(s): ${stuckResetLog.map(s => s.title).join(', ')}`);
       }
     }
@@ -462,13 +433,13 @@ async function runHeartbeatCycle() {
       }
     }
     if (retryChanged) {
-      seedYaml('tasks.yaml', tasks);
+      db.saveTasks(tasks);
       if (retryLog.length > 0) {
         const hbs = db.loadHeartbeats();
         for (const s of retryLog) {
           hbs.push({ id: nextId(hbs), agent_id: null, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'auto_retry', ...s }), status: 'ok' });
         }
-        saveHeartbeats(hbs);
+        db.saveHeartbeats(hbs);
         console.log(`[Heartbeat] Auto-retry: ${retryLog.length} failed task(s): ${retryLog.map(s => `${s.title} (${s.attempt}/3)`).join(', ')}`);
       }
     }
@@ -515,7 +486,7 @@ async function runHeartbeatCycle() {
       const taskIds = new Set(db.loadTasks().map(t => t.id));
       const before = db.loadTaskResults().length;
       const clean = db.loadTaskResults().filter(r => taskIds.has(r.task_id));
-      if (clean.length !== before) { saveTaskResults(clean); console.log(`[Cleanup] Removed ${before - clean.length} orphaned task results`); }
+      if (clean.length !== before) { db.saveTaskResults(clean); console.log(`[Cleanup] Removed ${before - clean.length} orphaned task results`); }
     }
   }
 }
@@ -612,7 +583,7 @@ app.post('/api/agents', async (req, res) => {
     const oc = await createOpenClawAgent(agentId, title, null, { vibe: desc });
     const agent = { id: nextId(agents), openclaw_agent_id: agentId, name: title, status: status || 'idle', budget_limit: budget_limit || 0, budget_spent: 0, heartbeat_enabled: 1, heartbeat_interval: heartbeat_interval || 30, last_heartbeat: null, created_at: new Date().toISOString() };
     agents.push(agent);
-    seedYaml('agents.yaml', agents);
+    db.saveAgents(agents);
     res.status(201).json({ ...agent, openclaw: oc });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -644,7 +615,7 @@ app.put('/api/agents/:id', (req, res) => {
   if (!a) return res.status(404).json({ error: 'not found' });
   const { name, status, budget_limit, budget_spent, heartbeat_enabled, heartbeat_interval } = req.body;
   Object.assign(a, { name: name ?? a.name, status: status ?? a.status, budget_limit: budget_limit ?? a.budget_limit, budget_spent: budget_spent ?? a.budget_spent, heartbeat_enabled: heartbeat_enabled !== undefined ? (heartbeat_enabled ? 1 : 0) : a.heartbeat_enabled, heartbeat_interval: Math.max(1, +(heartbeat_interval ?? a.heartbeat_interval)) });
-  seedYaml('agents.yaml', agents);
+  db.saveAgents(agents);
   res.json(a);
 });
 app.delete('/api/agents/:id', async (req, res) => {
@@ -665,18 +636,18 @@ app.delete('/api/agents/:id', async (req, res) => {
   try {
     await deleteOpenClawAgent(agent.openclaw_agent_id);
     agents.splice(idx, 1);
-    seedYaml('agents.yaml', agents);
+    db.saveAgents(agents);
     // Also remove assigned tasks
     const agentTaskIds = new Set(db.loadTasks().filter(t => t.assigned_agent_id === agent.id).map(t => t.id));
     const tasks = db.loadTasks().filter(t => t.assigned_agent_id !== agent.id);
-    seedYaml('tasks.yaml', tasks);
+    db.saveTasks(tasks);
     // Also clean up orphaned heartbeat entries
     const hbs = db.loadHeartbeats().filter(h => h.agent_id !== agent.id);
-    saveHeartbeats(hbs);
+    db.saveHeartbeats(hbs);
     // Also clean up task results for deleted tasks
     if (agentTaskIds.size > 0) {
       const results = db.loadTaskResults().filter(r => !agentTaskIds.has(r.task_id));
-      saveTaskResults(results);
+      db.saveTaskResults(results);
     }
     res.json({ ok: true });
   } catch (e) {
@@ -696,7 +667,7 @@ app.post('/api/agents/:id/reactivate', (req, res) => {
   if (a.status === 'active') return res.status(400).json({ error: 'agent is already active' });
   a.status = 'active';
   a.heartbeat_enabled = 1;
-  seedYaml('agents.yaml', agents);
+  db.saveAgents(agents);
   res.json({ ok: true, id: a.id, name: a.name, status: a.status });
 });
 // List tasks assigned to an agent
@@ -756,7 +727,7 @@ app.post('/api/projects', (req, res) => {
   const projects = db.loadProjects();
   const p = { id: nextId(projects), title, description: description || '', workspace_path: finalWorkspace, status: status || 'active', created_at: new Date().toISOString() };
   projects.push(p);
-  seedYaml('projects.yaml', projects);
+  db.saveProjects(projects);
   res.status(201).json(p);
 });
 app.get('/api/projects/:id', (req, res) => {
@@ -811,7 +782,7 @@ app.put('/api/projects/:id', (req, res) => {
   const { title, description, workspace_path, status } = req.body;
   if (workspace_path === '') return res.status(400).json({ error: 'workspace_path cannot be empty string (use null or omit to keep existing)' });
   Object.assign(p, { title: title ?? p.title, description: description ?? p.description, workspace_path: workspace_path ?? p.workspace_path, status: status ?? p.status });
-  seedYaml('projects.yaml', projects);
+  db.saveProjects(projects);
   res.json(p);
 });
 // Reopen a completed/failed project
@@ -821,7 +792,7 @@ app.post('/api/projects/:id/reopen', (req, res) => {
   if (!p) return res.status(404).json({ error: 'not found' });
   if (p.status === 'active') return res.status(400).json({ error: 'project is already active' });
   p.status = 'active';
-  seedYaml('projects.yaml', projects);
+  db.saveProjects(projects);
   res.json({ ok: true, id: p.id, title: p.title, status: p.status });
 });
 app.delete('/api/projects/:id', (req, res) => {
@@ -829,14 +800,14 @@ app.delete('/api/projects/:id', (req, res) => {
   const idx = projects.findIndex(x => x.id === +req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'not found' });
   projects.splice(idx, 1);
-  seedYaml('projects.yaml', projects);
+  db.saveProjects(projects);
   // Also delete tasks and their results
   const projectTaskIds = new Set(db.loadTasks().filter(t => t.project_id === +req.params.id).map(t => t.id));
   const tasks = db.loadTasks().filter(t => t.project_id !== +req.params.id);
-  seedYaml('tasks.yaml', tasks);
+  db.saveTasks(tasks);
   if (projectTaskIds.size > 0) {
     const results = db.loadTaskResults().filter(r => !projectTaskIds.has(r.task_id));
-    saveTaskResults(results);
+    db.saveTaskResults(results);
   }
   res.json({ ok: true });
 });
@@ -884,7 +855,7 @@ app.post('/api/projects/:id/tasks', (req, res) => {
   const tasks = db.loadTasks();
   const t = { id: nextId(tasks), project_id: +req.params.id, assigned_agent_id: toNum(assigned_agent_id), title, description: description || '', status: status || 'pending', dependency_id: depId, creates_agent: creates_agent || null, created_by_agent_id: toNum(created_by_agent_id), priority: priority || 'medium', created_at: new Date().toISOString(), completed_at: null };
   tasks.push(t);
-  seedYaml('tasks.yaml', tasks);
+  db.saveTasks(tasks);
   const agents = db.loadAgents();
   const a = agents.find(x => x.id === t.assigned_agent_id);
   res.status(201).json({ ...t, agent_name: a?.name, openclaw_agent_id: a?.openclaw_agent_id });
@@ -929,7 +900,7 @@ app.post('/api/projects/:id/tasks/from-agent', (req, res) => {
          created_at: new Date().toISOString(), completed_at: null
   };
   tasks.push(t);
-  seedYaml('tasks.yaml', tasks);
+  db.saveTasks(tasks);
   const a = agents.find(x => x.id === t.assigned_agent_id);
   res.status(201).json({ ...t, agent_name: a?.name, openclaw_agent_id: a?.openclaw_agent_id, created_by: creatorAgent.name });
 });
@@ -996,17 +967,17 @@ app.put('/api/tasks/:id', (req, res) => {
       if (projectTasks.length > 0 && projectTasks.every(x => x.status === 'done')) {
         const projects = db.loadProjects();
         const p = projects.find(x => x.id === t.project_id);
-        if (p && p.status === 'active') { p.status = 'completed'; seedYaml('projects.yaml', projects); console.log(`[Auto] Project "${p.title}" marked completed — all tasks done`); }
+        if (p && p.status === 'active') { p.status = 'completed'; db.saveProjects(projects); console.log(`[Auto] Project "${p.title}" marked completed — all tasks done`); }
       }
     }
     // Reopen project if a task is un-done from a completed project
     if (oldStatus === 'done' && status !== 'done') {
       const projects = db.loadProjects();
       const p = projects.find(x => x.id === t.project_id);
-      if (p && p.status === 'completed') { p.status = 'active'; seedYaml('projects.yaml', projects); console.log(`[Auto] Project "${p.title}" reopened — task #${t.id} un-completed`); }
+      if (p && p.status === 'completed') { p.status = 'active'; db.saveProjects(projects); console.log(`[Auto] Project "${p.title}" reopened — task #${t.id} un-completed`); }
     }
   }
-  seedYaml('tasks.yaml', tasks);
+  db.saveTasks(tasks);
   const a = db.loadAgents().find(x => x.id === t.assigned_agent_id);
   res.json({ ...t, agent_name: a?.name, openclaw_agent_id: a?.openclaw_agent_id });
 });
@@ -1022,10 +993,10 @@ app.delete('/api/tasks/:id', (req, res) => {
   }
   if (cleared > 0) console.log(`[Delete] Cleared ${cleared} dependency reference(s) to deleted task #${deletedId}`);
   tasks.splice(idx, 1);
-  seedYaml('tasks.yaml', tasks);
+  db.saveTasks(tasks);
   // Also clean up task results
   const results = db.loadTaskResults().filter(r => r.task_id !== +req.params.id);
-  saveTaskResults(results);
+  db.saveTaskResults(results);
   res.json({ ok: true });
 });
 app.get('/api/tasks/:id/results', (req, res) => { res.json(db.loadTaskResults().filter(r => r.task_id === +req.params.id).sort((a, b) => b.id - a.id)); });
@@ -1116,7 +1087,7 @@ app.post('/api/tasks/:id/duplicate', (req, res) => {
          // intentionally omitting _retry_count, _status_changed_at — copies start clean
   };
   tasks.push(t);
-  seedYaml('tasks.yaml', tasks);
+  db.saveTasks(tasks);
   const a = db.loadAgents().find(x => x.id === t.assigned_agent_id);
   res.status(201).json({ ...t, agent_name: a?.name, openclaw_agent_id: a?.openclaw_agent_id });
 });
@@ -1143,7 +1114,7 @@ app.post('/api/tasks/bulk', (req, res) => {
     if (assigned_agent_id !== undefined) t.assigned_agent_id = assigned_agent_id ? +assigned_agent_id : null;
     updated.push(t.id);
   }
-  seedYaml('tasks.yaml', tasks);
+  db.saveTasks(tasks);
   // Check auto-completion for affected projects
   if (status === 'done') {
     const projects = db.loadProjects();
@@ -1155,7 +1126,7 @@ app.post('/api/tasks/bulk', (req, res) => {
         if (p && p.status === 'active') { p.status = 'completed'; changed = true; console.log(`[Auto] Project "${p.title}" marked completed — all tasks done`); }
       }
     }
-    if (changed) seedYaml('projects.yaml', projects);
+    if (changed) db.saveProjects(projects);
   }
   res.json({ ok: true, updated: updated.length, task_ids: updated });
 });
@@ -1173,7 +1144,7 @@ app.post('/api/tasks/:id/run', async (req, res) => {
     // Log to heartbeat for visibility
     const hbs = db.loadHeartbeats();
     hbs.push({ id: nextId(hbs), agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'run_error', task_id: task.id, task_title: task.title, error: e.message }), status: 'error' });
-    saveHeartbeats(hbs);
+    db.saveHeartbeats(hbs);
     res.status(500).json({ error: e.message });
   }
 });
@@ -1185,11 +1156,11 @@ app.post('/api/tasks/:id/cancel', (req, res) => {
   if (t.status !== 'in_progress') return res.status(400).json({ error: `task status is "${t.status}", can only cancel in_progress tasks` });
   t.status = 'pending';
   delete t._status_changed_at;
-  seedYaml('tasks.yaml', tasks);
+  db.saveTasks(tasks);
   // Log cancellation
   const hbs = db.loadHeartbeats();
   hbs.push({ id: nextId(hbs), agent_id: null, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'task_cancelled', task_id: t.id, title: t.title }), status: 'warning' });
-  saveHeartbeats(hbs);
+  db.saveHeartbeats(hbs);
   res.json({ ok: true, task_id: t.id, title: t.title, status: 'pending' });
 });
 // Add a note to a task (stored in task_results with special type)
@@ -1200,7 +1171,7 @@ app.post('/api/tasks/:id/notes', (req, res) => {
   if (!task) return res.status(404).json({ error: 'not found' });
   const results = db.loadTaskResults();
   results.push({ id: nextId(results), task_id: task.id, agent_id: agent_id || null, input: '[note]', output: note, type: 'note', executed_at: new Date().toISOString() });
-  saveTaskResults(results);
+  db.saveTaskResults(results);
   res.json({ ok: true, task_id: task.id, note });
 });
 // Reassign a task to a different agent (lightweight — no need for full PUT)
@@ -1215,7 +1186,7 @@ app.post('/api/tasks/:id/assign', (req, res) => {
   if (!agent) return res.status(400).json({ error: 'agent not found' });
   const oldAgentId = t.assigned_agent_id;
   t.assigned_agent_id = agent.id;
-  seedYaml('tasks.yaml', tasks);
+  db.saveTasks(tasks);
   res.json({ ok: true, task_id: t.id, title: t.title, old_agent_id: oldAgentId, new_agent_id: agent.id, new_agent_name: agent.name });
 });
 // Retry a failed task — resets to pending so heartbeat picks it up, or runs immediately
@@ -1231,7 +1202,7 @@ app.post('/api/tasks/:id/retry', async (req, res) => {
   task._retry_count = (task._retry_count || 0) + 1;
   task.status = 'pending';
   delete task._status_changed_at;
-  seedYaml('tasks.yaml', tasks);
+  db.saveTasks(tasks);
   if (req.query.immediate === '1' || req.query.immediate === 'true') {
     // Run immediately
     setTaskStatus(task.id, 'in_progress');
@@ -1345,17 +1316,15 @@ app.get('/api/system/stats', (req, res) => {
   const projects = db.loadProjects();
   const hbs = db.loadHeartbeats();
   const results = db.loadTaskResults();
-  const dataFiles = fs.readdirSync(DATA_DIR).filter(f => f.endsWith('.yaml') && !f.endsWith('.tmp'));
-  const fileSizes = {};
-  for (const f of dataFiles) {
-    try { fileSizes[f] = fs.statSync(path.join(DATA_DIR, f)).size; } catch { fileSizes[f] = 0; }
-  }
+  let dbSize = 0;
+  try { dbSize = fs.statSync(DB_PATH).size; } catch {}
   res.json({
     agents: agents.length,
     tasks: tasks.length,
     projects: projects.length,
     heartbeats: hbs.length,
     task_results: results.length,
+    db_size_bytes: dbSize,
     max_heartbeats: MAX_HEARTBEATS,
     max_task_results: MAX_TASK_RESULTS,
     file_sizes_bytes: fileSizes,
@@ -1375,18 +1344,18 @@ app.post('/api/system/cleanup', (req, res) => {
   const results = db.loadTaskResults();
   const beforeResults = results.length;
   const cleanResults = results.filter(r => taskIds.has(r.task_id));
-  if (cleanResults.length !== beforeResults) saveTaskResults(cleanResults);
+  if (cleanResults.length !== beforeResults) db.saveTaskResults(cleanResults);
   // Clean orphaned heartbeats
   const hbs = db.loadHeartbeats();
   const beforeHbs = hbs.length;
   const cleanHbs = hbs.filter(h => !h.agent_id || agentIds.has(h.agent_id));
-  if (cleanHbs.length !== beforeHbs) saveHeartbeats(cleanHbs);
+  if (cleanHbs.length !== beforeHbs) db.saveHeartbeats(cleanHbs);
   // Clear stale completed_at on non-done tasks
   let clearedDates = 0;
   for (const t of tasks) {
     if (t.status !== 'done' && t.completed_at) { t.completed_at = null; clearedDates++; }
   }
-  if (clearedDates > 0) seedYaml('tasks.yaml', tasks);
+  if (clearedDates > 0) db.saveTasks(tasks);
   res.json({
     ok: true,
     orphaned_results_removed: beforeResults - cleanResults.length,
