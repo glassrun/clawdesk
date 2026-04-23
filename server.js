@@ -481,7 +481,7 @@ app.get('/api', (req, res) => {
       projects: ['GET /api/projects', 'POST /api/projects', 'GET /api/projects/:id', 'PUT /api/projects/:id', 'DELETE /api/projects/:id', 'GET /api/projects/:id/stats', 'GET /api/projects/:id/tasks', 'POST /api/projects/:id/tasks', 'POST /api/projects/:id/tasks/from-agent', 'POST /api/projects/:id/reopen'],
       tasks: ['GET /api/tasks', 'GET /api/tasks/summary', 'GET /api/tasks/:id', 'PUT /api/tasks/:id', 'DELETE /api/tasks/:id', 'GET /api/tasks/:id/results', 'GET /api/tasks/:id/history', 'GET /api/tasks/:id/chain', 'GET /api/tasks/:id/dependents', 'POST /api/tasks/:id/run', 'POST /api/tasks/:id/retry', 'POST /api/tasks/:id/cancel', 'POST /api/tasks/:id/duplicate', 'POST /api/tasks/:id/assign', 'POST /api/tasks/:id/notes', 'POST /api/tasks/bulk'],
       heartbeats: ['GET /api/heartbeats', 'POST /api/heartbeats/tick'],
-      system: ['GET /api/system/stats', 'POST /api/system/cleanup'],
+      system: ['GET /api/system/stats', 'POST /api/system/cleanup', 'POST /api/system/vacuum'],
       dashboard: ['GET /api/dashboard']
     },
     docs: { tasks: 'Supports ?status, ?priority, ?agent_id, ?project_id, ?search, ?sort_by, ?sort_dir, ?page, ?limit filters' }
@@ -584,39 +584,27 @@ app.put('/api/agents/:id', (req, res) => {
 });
 app.delete('/api/agents/:id', async (req, res) => {
   const agents = db.loadAgents();
-  const idx = agents.findIndex(x => x.id === +req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'not found' });
-  const agent = agents[idx];
+  const agent = agents.find(x => x.id === +req.params.id);
+  if (!agent) return res.status(404).json({ error: 'not found' });
 
   const tasks = db.loadTasks();
   const agentTasks = tasks.filter(t => t.assigned_agent_id === agent.id && t.status !== 'done');
   if (agentTasks.length > 0 && req.query.force !== '1') {
-    return res.status(400).json({
-      error: 'agent has active pending tasks',
-      pending_tasks: agentTasks.length,
-      hint: 'add ?force=1 to delete anyway'
-    });
+    return res.status(400).json({ error: 'agent has active pending tasks', pending_tasks: agentTasks.length, hint: 'add ?force=1 to delete anyway' });
   }
-  try {
-    await deleteOpenClawAgent(agent.openclaw_agent_id);
-    agents.splice(idx, 1);
-    db.saveAgents(agents);
-    // Also remove assigned tasks
-    const agentTaskIds = new Set(db.loadTasks().filter(t => t.assigned_agent_id === agent.id).map(t => t.id));
-    const tasks = db.loadTasks().filter(t => t.assigned_agent_id !== agent.id);
-    db.saveTasks(tasks);
-    // Also clean up orphaned heartbeat entries
-    const hbs = db.loadHeartbeats().filter(h => h.agent_id !== agent.id);
-    db.saveHeartbeats(hbs);
-    // Also clean up task results for deleted tasks
-    if (agentTaskIds.size > 0) {
-      const results = db.loadTaskResults().filter(r => !agentTaskIds.has(r.task_id));
-      db.saveTaskResults(results);
-    }
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
+
+  if (req.query.force === '1') {
+    // Soft-delete agent and unassign their tasks (don't cascade delete)
+    db.remove('agents', { id: agent.id });
+    db.remove('tasks', { assigned_agent_id: agent.id });
+  } else {
+    try {
+      await deleteOpenClawAgent(agent.openclaw_agent_id);
+      db.remove('agents', { id: agent.id });
+      db.remove('tasks', { assigned_agent_id: agent.id });
+    } catch (e) { return res.status(500).json({ error: e.message }); }
   }
+  res.json({ ok: true, soft_deleted: true });
 });
 app.post('/api/agents/:id/heartbeat', async (req, res) => {
   const agent = db.loadAgents().find(x => x.id === +req.params.id);
@@ -761,19 +749,12 @@ app.post('/api/projects/:id/reopen', (req, res) => {
 });
 app.delete('/api/projects/:id', (req, res) => {
   const projects = db.loadProjects();
-  const idx = projects.findIndex(x => x.id === +req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'not found' });
-  projects.splice(idx, 1);
-  db.saveProjects(projects);
-  // Also delete tasks and their results
-  const projectTaskIds = new Set(db.loadTasks().filter(t => t.project_id === +req.params.id).map(t => t.id));
-  const tasks = db.loadTasks().filter(t => t.project_id !== +req.params.id);
-  db.saveTasks(tasks);
-  if (projectTaskIds.size > 0) {
-    const results = db.loadTaskResults().filter(r => !projectTaskIds.has(r.task_id));
-    db.saveTaskResults(results);
-  }
-  res.json({ ok: true });
+  const p = projects.find(x => x.id === +req.params.id);
+  if (!p) return res.status(404).json({ error: 'not found' });
+  // Soft-delete project and its tasks
+  db.remove('projects', { id: p.id });
+  db.remove('tasks', { project_id: p.id });
+  res.json({ ok: true, soft_deleted: true });
 });
 
 // Tasks
@@ -947,21 +928,17 @@ app.put('/api/tasks/:id', (req, res) => {
 });
 app.delete('/api/tasks/:id', (req, res) => {
   const tasks = db.loadTasks();
-  const idx = tasks.findIndex(x => x.id === +req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'not found' });
-  const deletedId = tasks[idx].id;
-  // Clear dependency references to deleted task (prevents orphaned deps blocking execution)
+  const t = tasks.find(x => x.id === +req.params.id);
+  if (!t) return res.status(404).json({ error: 'not found' });
+  // Clear dependency references to deleted task
   let cleared = 0;
-  for (const t of tasks) {
-    if (t.dependency_id === deletedId) { t.dependency_id = null; cleared++; }
+  for (const task of tasks) {
+    if (task.dependency_id === t.id) { task.dependency_id = null; cleared++; }
   }
-  if (cleared > 0) console.log(`[Delete] Cleared ${cleared} dependency reference(s) to deleted task #${deletedId}`);
-  tasks.splice(idx, 1);
-  db.saveTasks(tasks);
-  // Also clean up task results
-  const results = db.loadTaskResults().filter(r => r.task_id !== +req.params.id);
-  db.saveTaskResults(results);
-  res.json({ ok: true });
+  if (cleared > 0) db.saveTasks(tasks);
+  db.remove('tasks', { id: t.id });
+  broadcastTaskUpdate(db.loadTasks());
+  res.json({ ok: true, soft_deleted: true, dependency_references_cleared: cleared });
 });
 app.get('/api/tasks/:id/results', (req, res) => { res.json(db.loadTaskResults().filter(r => r.task_id === +req.params.id).sort((a, b) => b.id - a.id)); });
 // Task history — combined execution results + heartbeat entries mentioning this task
@@ -1275,62 +1252,41 @@ app.get('/health', (req, res) => {
 
 // System stats — aggregate overview of all data
 app.get('/api/system/stats', (req, res) => {
-  const agents = db.loadAgents();
-  const tasks = db.loadTasks();
-  const projects = db.loadProjects();
-  const hbs = db.loadHeartbeats();
-  const results = db.loadTaskResults();
-  let dbSize = 0;
-  try { dbSize = fs.statSync(DB_PATH).size; } catch {}
-  res.json({
-    agents: agents.length,
-    tasks: tasks.length,
-    projects: projects.length,
-    heartbeats: hbs.length,
-    task_results: results.length,
-    db_size_bytes: dbSize,
-    max_heartbeats: MAX_HEARTBEATS,
-    max_task_results: MAX_TASK_RESULTS,
-    file_sizes_bytes: fileSizes,
-    uptime_seconds: Math.round(process.uptime()),
-           node_version: process.version,
-           timestamp: new Date().toISOString()
-  });
+  const stats = db.getDbStats();
+  stats.uptime_seconds = Math.round(process.uptime());
+  stats.node_version = process.version;
+  stats.timestamp = new Date().toISOString();
+  res.json(stats);
 });
 
-// Data integrity — clean orphaned records
+// Data integrity — clean orphaned records and purge soft-deleted
 app.post('/api/system/cleanup', (req, res) => {
   const tasks = db.loadTasks();
-  const agents = db.loadAgents();
-  const taskIds = new Set(tasks.map(t => t.id));
-  const agentIds = new Set(agents.map(a => a.id));
-  // Clean orphaned task results
-  const results = db.loadTaskResults();
-  const beforeResults = results.length;
-  const cleanResults = results.filter(r => taskIds.has(r.task_id));
-  if (cleanResults.length !== beforeResults) db.saveTaskResults(cleanResults);
-  // Clean orphaned heartbeats
-  const hbs = db.loadHeartbeats();
-  const beforeHbs = hbs.length;
-  const cleanHbs = hbs.filter(h => !h.agent_id || agentIds.has(h.agent_id));
-  if (cleanHbs.length !== beforeHbs) db.saveHeartbeats(cleanHbs);
-  // Clear stale completed_at on non-done tasks
   let clearedDates = 0;
   for (const t of tasks) {
     if (t.status !== 'done' && t.completed_at) { t.completed_at = null; clearedDates++; }
   }
   if (clearedDates > 0) db.saveTasks(tasks);
-  res.json({
-    ok: true,
-    orphaned_results_removed: beforeResults - cleanResults.length,
-    orphaned_heartbeats_removed: beforeHbs - cleanHbs.length,
-    stale_completed_at_cleared: clearedDates
-  });
+  const dt = db.clearDeleted('tasks');
+  const dp = db.clearDeleted('projects');
+  res.json({ ok: true, stale_completed_at_cleared: clearedDates, hard_deleted_tasks: dt, hard_deleted_projects: dp });
+});
 
-  // 404 for unknown API routes
-  app.use('/api', (req, res) => {
-    res.status(404).json({ error: `No route for ${req.method} ${req.originalUrl}` });
-  });});
+// VACUUM — reclaim DB space after heavy deletes
+app.post('/api/system/vacuum', (req, res) => {
+  db.vacuumDb();
+  res.json({ ok: true });
+});
+
+// Batch task creation — POST /api/tasks/batch { tasks: [...] }
+app.post('/api/tasks/batch', (req, res) => {
+  const { tasks } = req.body;
+  if (!Array.isArray(tasks) || tasks.length === 0) return res.status(400).json({ error: 'tasks must be a non-empty array' });
+  if (tasks.length > 200) return res.status(400).json({ error: 'max 200 tasks per batch' });
+  const ids = db.insertTaskBatch(tasks);
+  broadcastTaskUpdate(db.loadTasks());
+  res.json({ ok: true, count: ids.length, ids });
+});
 
 // ===================== ERROR HANDLING MIDDLEWARE =====================
 
