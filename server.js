@@ -1296,7 +1296,12 @@ app.use((err, req, res, _next) => {
   res.status(status).json({ error: status === 500 ? 'Internal server error' : err.message });
 });
 
-const server = app.listen(PORT, () => { console.log(`ClawDesk running on http://localhost:${PORT}`); startHeartbeatEngine(); });
+const server = app.listen(PORT, () => {
+  console.log(`ClawDesk running on http://localhost:${PORT}`);
+  // Sync agents from OpenClaw on startup
+  syncFromOpenClaw().then(r => { console.log(`[Init] Synced ${r.synced.length} agent(s) from OpenClaw`); }).catch(e => { console.log(`[Init] OpenClaw sync failed: ${e.message}`); });
+  startHeartbeatEngine();
+});
 
 // Graceful shutdown
 function shutdown(signal) {
