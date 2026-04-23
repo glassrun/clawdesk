@@ -187,7 +187,7 @@ function setTaskStatus(taskId, newStatus) {
     const tasks = db.loadTasks();
     const newTask = {
       ...t,
-      id: nextId(tasks),
+      id: nextId('tasks'),
       status: 'pending',
       created_at: new Date().toISOString(),
       _status_changed_at: null,
@@ -251,7 +251,7 @@ async function executeTask(agent, task) {
       const agents = db.loadAgents();
       if (!agents.find(a => a.openclaw_agent_id === task.creates_agent)) {
         agents.push({
-          id: nextId(agents), openclaw_agent_id: task.creates_agent,
+          id: nextId('agents'), openclaw_agent_id: task.creates_agent,
                     name: task.creates_agent.split('-').map(w => w[0].toUpperCase() + w.slice(1)).join(' '),
                     status: 'active',
                     budget_limit: 0, budget_spent: 0,
@@ -276,7 +276,7 @@ async function executeTask(agent, task) {
     setTaskStatus(task.id, 'done');
     // Store result with duration
     const results = db.loadTaskResults();
-    const resultObj = { id: nextId(results), task_id: task.id, agent_id: agent.id, input: message, output, duration_ms: durationMs, executed_at: new Date().toISOString() };
+    const resultObj = { id: nextId('task_results'), task_id: task.id, agent_id: agent.id, input: message, output, duration_ms: durationMs, executed_at: new Date().toISOString() };
     if (createdAgentInfo) resultObj.created_agent = createdAgentInfo;
     results.push(resultObj);
     db.saveTaskResults(results);
@@ -287,7 +287,7 @@ async function executeTask(agent, task) {
     const durationMs = Date.now() - startTime;
     setTaskStatus(task.id, 'failed');
     const results = db.loadTaskResults();
-    const resultObj = { id: nextId(results), task_id: task.id, agent_id: agent.id, input: message, output: `Error: ${err.message}`, duration_ms: durationMs, executed_at: new Date().toISOString() };
+    const resultObj = { id: nextId('task_results'), task_id: task.id, agent_id: agent.id, input: message, output: `Error: ${err.message}`, duration_ms: durationMs, executed_at: new Date().toISOString() };
     if (createdAgentInfo) resultObj.created_agent = createdAgentInfo;
     results.push(resultObj);
     db.saveTaskResults(results);
@@ -310,7 +310,7 @@ async function triggerHeartbeat(agent) {
     if (a) a.last_heartbeat = new Date().toISOString();
     db.saveAgents(agents);
     const hbs = db.loadHeartbeats();
-    hbs.push({ id: nextId(hbs), agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'no_pending_tasks' }), status: 'idle' });
+    hbs.push({ id: nextId('heartbeats'), agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'no_pending_tasks' }), status: 'idle' });
     db.saveHeartbeats(hbs);
     return { agent: agent.name, action: 'idle' };
   }
@@ -324,7 +324,7 @@ async function triggerHeartbeat(agent) {
     if (a) a.last_heartbeat = new Date().toISOString();
     db.saveAgents(agents);
     const hbs = db.loadHeartbeats();
-    hbs.push({ id: nextId(hbs), agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: JSON.stringify(result), status: result.action === 'failed' ? 'error' : 'ok' });
+    hbs.push({ id: nextId('heartbeats'), agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: JSON.stringify(result), status: result.action === 'failed' ? 'error' : 'ok' });
     db.saveHeartbeats(hbs);
     return { agent: agent.name, ...result };
   } catch (err) {
@@ -334,7 +334,7 @@ async function triggerHeartbeat(agent) {
     if (a) a.last_heartbeat = new Date().toISOString();
     db.saveAgents(agents);
     const hbs = db.loadHeartbeats();
-    hbs.push({ id: nextId(hbs), agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'error', error: err.message }), status: 'error' });
+    hbs.push({ id: nextId('heartbeats'), agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'error', error: err.message }), status: 'error' });
     db.saveHeartbeats(hbs);
     return { agent: agent.name, action: 'error', error: err.message };
   }
@@ -370,7 +370,7 @@ async function runHeartbeatCycle() {
       if (stuckResetLog.length > 0) {
         const hbs = db.loadHeartbeats();
         for (const s of stuckResetLog) {
-          hbs.push({ id: nextId(hbs), agent_id: null, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'stuck_reset', ...s }), status: 'warning' });
+          hbs.push({ id: nextId('heartbeats'), agent_id: null, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'stuck_reset', ...s }), status: 'warning' });
         }
         db.saveHeartbeats(hbs);
         console.log(`[Heartbeat] Reset ${stuckResetLog.length} stuck task(s): ${stuckResetLog.map(s => s.title).join(', ')}`);
@@ -399,7 +399,7 @@ async function runHeartbeatCycle() {
       if (retryLog.length > 0) {
         const hbs = db.loadHeartbeats();
         for (const s of retryLog) {
-          hbs.push({ id: nextId(hbs), agent_id: null, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'auto_retry', ...s }), status: 'ok' });
+          hbs.push({ id: nextId('heartbeats'), agent_id: null, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'auto_retry', ...s }), status: 'ok' });
         }
         db.saveHeartbeats(hbs);
         console.log(`[Heartbeat] Auto-retry: ${retryLog.length} failed task(s): ${retryLog.map(s => `${s.title} (${s.attempt}/3)`).join(', ')}`);
@@ -543,7 +543,7 @@ app.post('/api/agents', async (req, res) => {
     const agents = db.loadAgents();
     if (agents.find(a => a.openclaw_agent_id === agentId)) return res.status(409).json({ error: 'Agent already exists' });
     const oc = await createOpenClawAgent(agentId, title, null, { vibe: desc });
-    const agent = { id: nextId(agents), openclaw_agent_id: agentId, name: title, status: status || 'idle', budget_limit: budget_limit || 0, budget_spent: 0, heartbeat_enabled: 1, heartbeat_interval: heartbeat_interval || 30, last_heartbeat: null, created_at: new Date().toISOString() };
+    const agent = { id: nextId('agents'), openclaw_agent_id: agentId, name: title, status: status || 'idle', budget_limit: budget_limit || 0, budget_spent: 0, heartbeat_enabled: 1, heartbeat_interval: heartbeat_interval || 30, last_heartbeat: null, created_at: new Date().toISOString() };
     agents.push(agent);
     db.saveAgents(agents);
     res.status(201).json({ ...agent, openclaw: oc });
@@ -675,7 +675,7 @@ app.post('/api/projects', (req, res) => {
   fs.mkdirSync(finalWorkspace, { recursive: true, mode: 0o755 });
 
   const projects = db.loadProjects();
-  const p = { id: nextId(projects), title, description: description || '', workspace_path: finalWorkspace, status: status || 'active', created_at: new Date().toISOString() };
+  const p = { id: nextId('projects'), title, description: description || '', workspace_path: finalWorkspace, status: status || 'active', created_at: new Date().toISOString() };
   projects.push(p);
   db.saveProjects(projects);
   res.status(201).json(p);
@@ -796,7 +796,7 @@ app.post('/api/projects/:id/tasks', (req, res) => {
     if (current) return res.status(400).json({ error: `circular dependency detected: task #${depId} is part of a cycle` });
   }
   const tasks = db.loadTasks();
-  const t = { id: nextId(tasks), project_id: +req.params.id, assigned_agent_id: toNum(assigned_agent_id), title, description: description || '', status: status || 'pending', dependency_id: depId, creates_agent: creates_agent || null, created_by_agent_id: toNum(created_by_agent_id), priority: priority || 'medium', created_at: new Date().toISOString(), completed_at: null };
+  const t = { id: nextId('tasks'), project_id: +req.params.id, assigned_agent_id: toNum(assigned_agent_id), title, description: description || '', status: status || 'pending', dependency_id: depId, creates_agent: creates_agent || null, created_by_agent_id: toNum(created_by_agent_id), priority: priority || 'medium', created_at: new Date().toISOString(), completed_at: null };
   tasks.push(t);
   db.saveTasks(tasks);
   const agents = db.loadAgents();
@@ -833,7 +833,7 @@ app.post('/api/projects/:id/tasks/from-agent', (req, res) => {
     if (dep.project_id !== +req.params.id) return res.status(400).json({ error: `dependency task #${depId} belongs to a different project` });
   }
   const t = {
-    id: nextId(tasks), project_id: +req.params.id,
+    id: nextId('tasks'), project_id: +req.params.id,
          assigned_agent_id: assignedId,
          title, description: description || '',
          status: 'pending', dependency_id: depId,
@@ -1014,7 +1014,7 @@ app.post('/api/tasks/:id/duplicate', (req, res) => {
     if (!agents.find(a => a.id === orig.assigned_agent_id)) return res.status(400).json({ error: 'assigned agent no longer exists — reassign before duplicating' });
   }
   const t = {
-    id: nextId(tasks), project_id: orig.project_id,
+    id: nextId('tasks'), project_id: orig.project_id,
          assigned_agent_id: orig.assigned_agent_id,
          title: req.body.title || (orig.title + ' (copy)'),
          description: orig.description, status: 'pending',
@@ -1082,7 +1082,7 @@ app.post('/api/tasks/:id/run', async (req, res) => {
     setTaskStatus(task.id, 'pending');
     // Log to heartbeat for visibility
     const hbs = db.loadHeartbeats();
-    hbs.push({ id: nextId(hbs), agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'run_error', task_id: task.id, task_title: task.title, error: e.message }), status: 'error' });
+    hbs.push({ id: nextId('heartbeats'), agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'run_error', task_id: task.id, task_title: task.title, error: e.message }), status: 'error' });
     db.saveHeartbeats(hbs);
     res.status(500).json({ error: e.message });
   }
@@ -1098,7 +1098,7 @@ app.post('/api/tasks/:id/cancel', (req, res) => {
   db.saveTasks(tasks);
   // Log cancellation
   const hbs = db.loadHeartbeats();
-  hbs.push({ id: nextId(hbs), agent_id: null, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'task_cancelled', task_id: t.id, title: t.title }), status: 'warning' });
+  hbs.push({ id: nextId('heartbeats'), agent_id: null, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'task_cancelled', task_id: t.id, title: t.title }), status: 'warning' });
   db.saveHeartbeats(hbs);
   res.json({ ok: true, task_id: t.id, title: t.title, status: 'pending' });
 });
@@ -1109,7 +1109,7 @@ app.post('/api/tasks/:id/notes', (req, res) => {
   const task = db.loadTasks().find(x => x.id === +req.params.id);
   if (!task) return res.status(404).json({ error: 'not found' });
   const results = db.loadTaskResults();
-  results.push({ id: nextId(results), task_id: task.id, agent_id: agent_id || null, input: '[note]', output: note, type: 'note', executed_at: new Date().toISOString() });
+  results.push({ id: nextId('task_results'), task_id: task.id, agent_id: agent_id || null, input: '[note]', output: note, type: 'note', executed_at: new Date().toISOString() });
   db.saveTaskResults(results);
   res.json({ ok: true, task_id: task.id, note });
 });
