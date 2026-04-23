@@ -179,8 +179,8 @@ function seed() {
            t(2, 'project-manager', 'Implement dashboard backend', 'Build API endpoints for new dashboard data', 'pending', 7, 'high'),
            t(2, 'main', 'Approve dashboard budget', 'Review and approve budget for rebuild', 'pending', null, 'low')
   ]);
-  db.db.saveHeartbeats([]);
-  db.db.saveTaskResults([]);
+  db.saveHeartbeats([]);
+  db.saveTaskResults([]);
 }
 
 // Init: sync agents then seed
