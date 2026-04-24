@@ -1,4 +1,6 @@
-export const API_BASE = 'http://192.168.122.124:3777';
+// Use same-origin relative URLs — works in all deployments without config
+// Override with FULL absolute URL if frontend and API are on different origins
+export const API_BASE = '';
 
 export async function api<T>(path: string, opts: RequestInit = {}): Promise<T> {
   console.log('API call:', path);
@@ -154,4 +156,12 @@ export async function getTaskResults(id: number) {
 
 export async function tickHeartbeats() {
   return api<{ ticked: number }>('/api/heartbeats/tick', { method: 'POST' });
+}
+
+export async function retryTask(id: number) {
+  return api<{ retried: boolean; immediate?: boolean; task_id?: number; status?: string; retry_count?: number; message?: string }>(`/api/tasks/${id}/retry`, { method: 'POST' });
+}
+
+export async function cancelTask(id: number) {
+  return api<{ ok: boolean; task_id: number; title: string; status: string }>(`/api/tasks/${id}/cancel`, { method: 'POST' });
 }
