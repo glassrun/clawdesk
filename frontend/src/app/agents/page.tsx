@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { getAgents, syncAgents, createAgent, updateAgent, deleteAgent, type Agent } from "@/lib/api";
+import { useStream } from "@/lib/useStream";
 
 function statusBadge(status: string) {
   const styles: Record<string, string> = {
@@ -45,7 +46,16 @@ export default function AgentsPage() {
     finally { setLoading(false); }
   };
 
+  const { lastMessage } = useStream();
+  
   useEffect(() => { loadData(); }, []);
+  
+  useEffect(() => {
+    if (!lastMessage) return;
+    if (lastMessage.event === "tasks" || lastMessage.event === "heartbeat") {
+      loadData();
+    }
+  }, [lastMessage]);
 
   const handleSync = async () => {
     setSyncing(true);

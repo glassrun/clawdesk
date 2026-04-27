@@ -105,9 +105,8 @@ export async function getHeartbeats(params: Record<string, string> = {}) {
 }
 
 export async function syncAgents() {
-  const agents = await api<{ openclaw_agent_id: string; name: string }[]>('/api/agents/sync', { method: 'POST' });
-  // Return the synced agents list
-  return agents;
+  // Server returns { ok, synced: [...], count } not an array
+  return api<{ ok: boolean; synced: string[]; count: number }>('/api/agents/sync', { method: 'POST' });
 }
 
 export async function createAgent(data: { job_title: string; job_description?: string }) {
