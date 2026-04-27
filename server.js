@@ -125,8 +125,6 @@ function syncFromOpenClaw() {
         const agents = db.loadAgents();
         const existingMap = new Map(agents.map(a => [a.openclaw_agent_id, a]));
         let added = 0, updated = 0;
-        const maxId = Math.max(0, ...agents.map(a => a.id));
-        let nextId = maxId + 1;
         for (const ca of cliAgents) {
           const id = ca.id;
           if (existingMap.has(id)) {
@@ -135,7 +133,7 @@ function syncFromOpenClaw() {
             e.status = 'active';
             updated++;
           } else {
-            agents.push({ id: nextId++, openclaw_agent_id: id, name: ca.identityName || ca.name || id, status: 'active', budget_limit: 0, budget_spent: 0, heartbeat_enabled: 1, heartbeat_interval: 60, last_heartbeat: null, tasks_done: 0, tasks_failed: 0, created_at: new Date().toISOString(), model: ca.model || 'minimax/MiniMax-M2.7' });
+            agents.push({ id: nextId('agents'), openclaw_agent_id: id, name: ca.identityName || ca.name || id, status: 'active', budget_limit: 0, budget_spent: 0, heartbeat_enabled: 1, heartbeat_interval: 60, last_heartbeat: null, tasks_done: 0, tasks_failed: 0, created_at: new Date().toISOString(), model: ca.model || 'minimax/MiniMax-M2.7' });
             added++;
           }
         }
