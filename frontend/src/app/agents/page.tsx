@@ -13,7 +13,7 @@ function statusBadge(status: string) {
   return <span className={"badge " + (styles[status] || "badge")}>{status}</span>;
 }
 
-function timeAgo(dateStr: string) {
+function timeAgo(dateStr: string | undefined) {
   if (!dateStr) return "never";
   const date = new Date(dateStr);
   const now = new Date();
@@ -65,7 +65,7 @@ export default function AgentsPage() {
     finally { setSyncing(false); loadData(); }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: number) => {
     if (!confirm("Delete this agent?")) return;
     await deleteAgent(id);
     loadData();
@@ -75,9 +75,9 @@ export default function AgentsPage() {
     setEditAgent(agent);
     setFormOcId(agent.openclaw_agent_id);
     setFormName(agent.name);
-    setFormDesc(agent.description || "");
+    setFormDesc("");
     setFormStatus(agent.status || "idle");
-    setFormHbEnabled(agent.heartbeat_enabled === 1 ? 1 : 0);
+    setFormHbEnabled(agent.heartbeat_enabled ? 1 : 0);
     setFormHbInterval(agent.heartbeat_interval || 30);
     setShowModal(true);
   };
@@ -97,7 +97,6 @@ export default function AgentsPage() {
     if (editAgent) {
       await updateAgent(editAgent.id, {
         name: formName,
-        description: formDesc,
         status: formStatus,
         heartbeat_enabled: formHbEnabled === 1,
         heartbeat_interval: formHbInterval,
@@ -146,7 +145,7 @@ export default function AgentsPage() {
                     <td className="p-3">{statusBadge(a.status || "idle")}</td>
                     <td className="p-3">{a.tasks_done || 0}</td>
                     <td className="p-3 text-soft">{timeAgo(a.last_heartbeat)}</td>
-                    <td className="p-3 text-soft">{a.heartbeat_enabled === 1 ? `${a.heartbeat_interval || 30}m` : 'off'}</td>
+                    <td className="p-3 text-soft">{a.heartbeat_enabled ? `${a.heartbeat_interval || 30}m` : 'off'}</td>
                     <td className="p-3">
                       <div className="flex gap-1">
                         <button className="btn-sm" onClick={() => openEditModal(a)}>✏️</button>

@@ -130,7 +130,7 @@ export default function TasksPage() {
   const handleDuplicate = async (id: number) => {
     const task = tasks.find(t => t.id === id);
     if (!task) return;
-    await createTask(task.project_id, { ...task, title: task.title + " (copy)" });
+    await createTask(+task.project_id, { ...task, title: task.title + " (copy)" });
     loadData();
   };
 
@@ -151,7 +151,7 @@ export default function TasksPage() {
     setFormTitle(task.title);
     setFormDesc(task.description || "");
     setFormPriority(task.priority || "medium");
-    setFormAgent(task.assigned_agent_id || "");
+    setFormAgent(task.assigned_agent_id ? String(task.assigned_agent_id) : "");
     setFormProject(task.project_id);
     setShowEditModal(true);
   };
@@ -162,7 +162,7 @@ export default function TasksPage() {
       title: formTitle,
       description: formDesc,
       priority: formPriority,
-      assigned_agent_id: formAgent || null,
+      assigned_agent_id: formAgent ? +formAgent : undefined,
       project_id: formProject,
     });
     setShowEditModal(false);
@@ -174,7 +174,7 @@ export default function TasksPage() {
       title: formTitle,
       description: formDesc,
       priority: formPriority,
-      assigned_agent_id: formAgent || null,
+      assigned_agent_id: formAgent ? +formAgent : undefined,
     });
     setShowAddModal(false);
     setFormTitle(""); setFormDesc(""); setFormPriority("medium"); setFormAgent(""); setFormProject(1);

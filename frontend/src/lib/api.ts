@@ -15,7 +15,7 @@ export async function api<T>(path: string, opts: RequestInit = {}): Promise<T> {
 }
 
 export interface Agent {
-  id: string;
+  id: number;
   openclaw_agent_id: string;
   name: string;
   status: string;
@@ -39,16 +39,17 @@ export interface Project {
   task_total?: number;
   task_done?: number;
   completion_pct?: number;
+  created_at?: string;
 }
 
 export interface Task {
-  id: string;
-  project_id: string;
+  id: number;
+  project_id: number;
   title: string;
   description?: string;
   status: string;
   priority: string;
-  assigned_agent_id?: string;
+  assigned_agent_id?: number;
   agent_name?: string;
   openclaw_agent_id?: string;
   dependency_id?: number;
@@ -56,6 +57,9 @@ export interface Task {
   creates_agent?: string;
   created_by_agent_slug?: string;
   created_at: string;
+  completed_at?: string;
+  run_count?: number;
+  retry_count?: number;
 }
 
 export interface Heartbeat {

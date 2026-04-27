@@ -3,7 +3,8 @@
 import React, { useEffect, useState } from "react";
 import { getProjects, createProject, deleteProject, type Project } from "@/lib/api";
 
-function timeAgo(dateStr: string) {
+function timeAgo(dateStr: string | undefined) {
+  if (!dateStr) return "never";
   const date = new Date(dateStr);
   const now = new Date();
   const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
@@ -69,7 +70,7 @@ export default function ProjectsPage() {
                 <span className={p.task_done === p.task_total ? "text-green" : "text-yellow"}>
                   {p.task_done || 0}/{p.task_total || 0} done
                 </span>
-                {p.task_total > 0 && <span className="text-soft">{p.completion_pct}%</span>}
+                {p.task_total && p.task_total > 0 && <span className="text-soft">{p.completion_pct}%</span>}
               </div>
               <p className="text-xs text-soft mt-2">Created {timeAgo(p.created_at)}</p>
             </div>
