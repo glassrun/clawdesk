@@ -328,6 +328,33 @@ async function executeTask(agent, task) {
       }
       createdAgentInfo = { agent_id: task.creates_agent, workspace: oc.workspace };
       message += `\n[Created agent: ${task.creates_agent}]`;
+      
+      // Auto-create onboarding task for newly created agent
+      try {
+        const agents = db.loadAgents();
+        const newAgent = agents.find(a => a.openclaw_agent_id === task.creates_agent);
+        if (newAgent) {
+          const tasks = db.loadTasks();
+          tasks.push({
+            id: nextId('tasks'),
+            project_id: task.project_id,
+            assigned_agent_id: newAgent.id,
+            title: `Onboarding: ${task.creates_agent}`,
+            description: `Welcome! You are the newly created agent: ${task.creates_agent}. Review the project context and pick up tasks as needed.`,
+            status: 'pending',
+            priority: 'medium',
+            dependency_id: task.id,
+            creates_agent: null,
+            created_by_agent_id: agent.id,
+            created_at: new Date().toISOString(),
+            completed_at: null
+          });
+          db.saveTasks(tasks);
+          console.log(`[AutoAssign] Created onboarding task for ${task.creates_agent}`);
+        }
+      } catch(e) {
+        console.log(`[AutoAssign] Failed to create onboarding task: ${e.message}`);
+      }
     } catch (e) {
       createdAgentInfo = { agent_id: task.creates_agent, error: e.message };
     }
