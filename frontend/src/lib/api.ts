@@ -1,6 +1,6 @@
 // Use same-origin relative URLs — works in all deployments without config
 // Override with FULL absolute URL if frontend and API are on different origins
-export const API_BASE = '';
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
 export async function api<T>(path: string, opts: RequestInit = {}): Promise<T> {
   console.log('API call:', path);
