@@ -201,6 +201,74 @@ function setTaskStatus(taskId, newStatus) {
   return t;
 }
 
+// ===================== TASK HANDOFF PARSER =====================
+
+// Parse agent output for task handoff signals in JSON format
+// Agents can include a special JSON block in their output to trigger automatic task creation
+// Format: {"handoff": {"title": "...", "description": "...", "assigned_to_agent_id": "..."}}
+// Or the simpler task creation format: {"create_task_for": "agent-id", "title": "...", ...}
+function parseTaskHandoffs(output, projectId) {
+  const handoffs = [];
+  if (!output || typeof output !== 'string') return handoffs;
+  
+  // Try to find JSON blocks in the output
+  const jsonBlocks = output.match(/\{[^{}]*\}/g) || [];
+  
+  for (const block of jsonBlocks) {
+    try {
+      const parsed = JSON.parse(block);
+      
+      // Check for handoff format 1: {handoff: {title, description, assigned_to_agent_id}}
+      if (parsed.handoff && parsed.handoff.title && parsed.handoff.assigned_to_agent_id) {
+        const agents = db.loadAgents();
+        const targetAgent = agents.find(a => a.openclaw_agent_id === parsed.handoff.assigned_to_agent_id || a.id === +parsed.handoff.assigned_to_agent_id);
+        if (targetAgent) {
+          const tasks = db.loadTasks();
+          const newTask = {
+            id: nextId('tasks'),
+            project_id: projectId,
+            assigned_agent_id: targetAgent.id,
+            title: parsed.handoff.title,
+            description: parsed.handoff.description || '',
+            status: 'pending',
+            priority: parsed.handoff.priority || 'medium',
+            created_by_agent_id: null,
+            created_at: new Date().toISOString()
+          };
+          tasks.push(newTask);
+          db.saveTasks(tasks);
+          handoffs.push({ ...newTask, assigned_agent_name: targetAgent.name, from_handoff: true });
+        }
+      }
+      
+      // Check for handoff format 2: {create_task_for: "agent-id", title: "...", description: "..."}
+      if (parsed.create_task_for && parsed.title) {
+        const agents = db.loadAgents();
+        const targetAgent = agents.find(a => a.openclaw_agent_id === parsed.create_task_for || a.id === +parsed.create_task_for);
+        if (targetAgent) {
+          const tasks = db.loadTasks();
+          const newTask = {
+            id: nextId('tasks'),
+            project_id: projectId,
+            assigned_agent_id: targetAgent.id,
+            title: parsed.title,
+            description: parsed.description || '',
+            status: 'pending',
+            priority: parsed.priority || 'medium',
+            created_by_agent_id: null,
+            created_at: new Date().toISOString()
+          };
+          tasks.push(newTask);
+          db.saveTasks(tasks);
+          handoffs.push({ ...newTask, assigned_agent_name: targetAgent.name, from_create_task_for: true });
+        }
+      }
+    } catch { /* ignore parse errors */ }
+  }
+  
+  return handoffs;
+}
+
 // ===================== HEARTBEAT ENGINE =====================
 
 async function executeTask(agent, task) {
@@ -271,6 +339,16 @@ async function executeTask(agent, task) {
     const result = await runOpenClawAgent(agent.openclaw_agent_id, message, 180000, undefined);
     const durationMs = Date.now() - startTime;
     const output = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+    
+    // Parse output for task handoff signals
+    const handoffs = parseTaskHandoffs(output, task.project_id);
+    for (const h of handoffs) {
+      console.log(`[Handoff] ${agent.name} handed off task to ${h.assigned_agent_name}`);
+      const hbs = db.loadHeartbeats();
+      hbs.push({ id: nextId('heartbeats'), agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'handoff', to: h.assigned_agent_name, title: h.title }), status: 'ok' });
+      db.saveHeartbeats(hbs);
+    }
+    
     setTaskStatus(task.id, 'done');
     // Store result with duration
     const results = db.loadTaskResults();
