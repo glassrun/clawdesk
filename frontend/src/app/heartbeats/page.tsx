@@ -50,7 +50,7 @@ export default function HeartbeatsPage() {
 
   useEffect(() => {
     if (!lastMessage) return;
-    if (lastMessage.event === "tasks") refreshData();
+    if (lastMessage.event === "heartbeat" || lastMessage.event === "tasks") refreshData();
   }, [lastMessage, refreshData]);
 
   const filtered = filter === "all"
