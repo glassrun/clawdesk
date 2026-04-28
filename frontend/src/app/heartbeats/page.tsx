@@ -15,23 +15,18 @@ function timeAgo(dateStr: string) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-type FilterStatus = "all" | "ok" | "warning" | "failed";
+type FilterStatus = "all" | "ok" | "warning" | "failed" | "idle";
 
 export default function HeartbeatsPage() {
   const [heartbeats, setHeartbeats] = useState<Heartbeat[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<FilterStatus>("all");
-  const [total, setTotal] = useState(0);
-  const [pages, setPages] = useState(1);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [filter, setFilter] = useState<FilterStatus>("ok");
   const { lastMessage, connected } = useStream();
 
   const refreshData = useCallback(async () => {
     try {
       const res = await getHeartbeats({ limit: "500" });
       setHeartbeats(res.data || []);
-      setTotal(res.total || res.data?.length || 0);
-      setPages(res.pages || 1);
     } catch (e) { console.error(e); }
   }, []);
 
@@ -40,8 +35,6 @@ export default function HeartbeatsPage() {
     try {
       const res = await getHeartbeats({ limit: "500" });
       setHeartbeats(res.data || []);
-      setTotal(res.total || res.data?.length || 0);
-      setPages(res.pages || 1);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, []);
@@ -53,16 +46,18 @@ export default function HeartbeatsPage() {
     if (lastMessage.event === "heartbeat" || lastMessage.event === "tasks") refreshData();
   }, [lastMessage, refreshData]);
 
-  const filtered = filter === "all"
-    ? heartbeats
-    : heartbeats.filter(h => h.status === filter);
-
+  const idleCount = heartbeats.filter(h => h.status === "idle").length;
+  const shownCount = heartbeats.filter(h => h.status !== "idle").length;
   const stats = {
-    total: heartbeats.length,
     ok: heartbeats.filter(h => h.status === "ok").length,
     warning: heartbeats.filter(h => h.status === "warning").length,
     failed: heartbeats.filter(h => h.status === "failed").length,
+    idle: idleCount,
   };
+
+  const filtered = filter === "all"
+    ? heartbeats
+    : heartbeats.filter(h => h.status === filter);
 
   return (
     <div className="page-wrap">
@@ -71,8 +66,9 @@ export default function HeartbeatsPage() {
         <div>
           <h1 className="text-xl font-bold">Heartbeat Log</h1>
           <p className="text-sm text-muted mt-1">
-            {stats.total} shown · {stats.ok} healthy · {stats.warning} warnings · {stats.failed} failed
-            {total > stats.total ? ` · ${total} total` : ''}
+            {filter === "idle" ? `${shownCount} active · ` : `${shownCount} shown · `}
+            {stats.ok} healthy · {stats.warning} warnings · {stats.failed} failed
+            {idleCount > 0 ? ` · ${idleCount} idle` : ''}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -83,16 +79,14 @@ export default function HeartbeatsPage() {
 
       {/* Filter Tabs */}
       <div className="flex gap-2 mb-4">
-        {(["all", "ok", "warning", "failed"] as FilterStatus[]).map(f => (
+        {(["ok", "warning", "failed", "idle"] as FilterStatus[]).map(f => (
           <button
             key={f}
             className={`btn-sm ${filter === f ? "primary" : ""}`}
             onClick={() => setFilter(f)}
           >
-            {f === "all" ? "All" : f.charAt(0).toUpperCase() + f.slice(1)}
-            <span className="ml-1 text-xs opacity-60">
-              {f === "all" ? stats.total : stats[f as keyof typeof stats]}
-            </span>
+            {f.charAt(0).toUpperCase() + f.slice(1)}
+            <span className="ml-1 text-xs opacity-60">{stats[f]}</span>
           </button>
         ))}
       </div>
@@ -124,6 +118,7 @@ export default function HeartbeatsPage() {
                       <span className={`badge status-${h.status || "ok"}`}>
                         <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
                           h.status === "ok" ? "bg-blue-400" :
+                          h.status === "idle" ? "bg-gray-400" :
                           h.status === "warning" ? "bg-amber-400" : "bg-red-400"
                         }`} />
                         {h.status || "ok"}
