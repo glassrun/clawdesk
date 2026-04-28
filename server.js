@@ -211,15 +211,14 @@ function parseTaskHandoffs(output, projectId) {
   const handoffs = [];
   if (!output || typeof output !== 'string') return handoffs;
   
-  // Try multiple approaches to find JSON in output
-  let jsonMatch;
-  const jsonRegex = /(\{[\s\S]*?\})/g;
-  while ((jsonMatch = jsonRegex.exec(output)) !== null) {
-    const block = jsonMatch[1];
+  // Try to find JSON blocks in the output
+  const jsonBlocks = output.match(/\{[^{}]*\}/g) || [];
+  
+  for (const block of jsonBlocks) {
     try {
       const parsed = JSON.parse(block);
       
-      // Check for handoff format: {handoff: {title, description, assigned_to_agent_id}}
+      // Check for handoff format 1: {handoff: {title, description, assigned_to_agent_id}}
       if (parsed.handoff && parsed.handoff.title && parsed.handoff.assigned_to_agent_id) {
         const agents = db.loadAgents();
         const targetAgent = agents.find(a => a.openclaw_agent_id === parsed.handoff.assigned_to_agent_id || a.id === +parsed.handoff.assigned_to_agent_id);
@@ -239,11 +238,10 @@ function parseTaskHandoffs(output, projectId) {
           tasks.push(newTask);
           db.saveTasks(tasks);
           handoffs.push({ ...newTask, assigned_agent_name: targetAgent.name, from_handoff: true });
-          console.log(`[Handoff] Created task "${newTask.title}" for ${targetAgent.name}`);
         }
       }
       
-      // Check for simple format: {create_task_for: "agent-id", title: "..."}
+      // Check for handoff format 2: {create_task_for: "agent-id", title: "...", description: "..."}
       if (parsed.create_task_for && parsed.title) {
         const agents = db.loadAgents();
         const targetAgent = agents.find(a => a.openclaw_agent_id === parsed.create_task_for || a.id === +parsed.create_task_for);
@@ -263,11 +261,13 @@ function parseTaskHandoffs(output, projectId) {
           tasks.push(newTask);
           db.saveTasks(tasks);
           handoffs.push({ ...newTask, assigned_agent_name: targetAgent.name, from_create_task_for: true });
-          console.log(`[Handoff] Created task "${newTask.title}" for ${targetAgent.name}`);
         }
       }
     } catch { /* ignore parse errors */ }
   }
+  
+  return handoffs;
+}
 
 // ===================== HEARTBEAT ENGINE =====================
 
