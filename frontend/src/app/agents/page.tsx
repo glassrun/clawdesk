@@ -78,7 +78,7 @@ export default function AgentsPage() {
     setFormDesc("");
     setFormStatus(agent.status || "idle");
     setFormHbEnabled(agent.heartbeat_enabled ? 1 : 0);
-    setFormHbInterval(agent.heartbeat_interval || 30);
+    setFormHbInterval(agent.heartbeat_interval || 1);
     setShowModal(true);
   };
 
@@ -89,7 +89,7 @@ export default function AgentsPage() {
     setFormDesc("");
     setFormStatus("idle");
     setFormHbEnabled(1);
-    setFormHbInterval(30);
+    setFormHbInterval(1);
     setShowModal(true);
   };
 
@@ -145,7 +145,7 @@ export default function AgentsPage() {
                     <td className="p-3">{statusBadge(a.status || "idle")}</td>
                     <td className="p-3">{a.tasks_done || 0}</td>
                     <td className="p-3 text-soft">{timeAgo(a.last_heartbeat)}</td>
-                    <td className="p-3 text-soft">{a.heartbeat_enabled ? `${a.heartbeat_interval || 30}m` : 'off'}</td>
+                    <td className="p-3 text-soft">{a.heartbeat_enabled ? `${a.heartbeat_interval || 1}s` : 'off'}</td>
                     <td className="p-3">
                       <div className="flex gap-1">
                         <button className="btn-sm" onClick={() => openEditModal(a)}>✏️</button>
@@ -196,7 +196,7 @@ export default function AgentsPage() {
                   </select>
                 </div>
                 <div className="form-row">
-                  <label>Interval (minutes)</label>
+                  <label>Interval (seconds)</label>
                   <input type="number" min={1} max={1440} value={formHbInterval} onChange={(e) => setFormHbInterval(+e.target.value)} />
                 </div>
               </>

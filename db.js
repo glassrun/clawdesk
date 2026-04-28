@@ -13,6 +13,18 @@ db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 db.pragma('busy_timeout = 5000');
 
+// ===================== GLOBAL ERROR HANDLERS =====================
+
+// Catch unhandled promise rejections that could crash the server
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[DB] Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[DB] Uncaught Exception:', err);
+  process.exit(1);
+});
+
 // ===================== Schema version / Migrations =====================
 
 const CURRENT_VERSION = 2;
@@ -61,8 +73,8 @@ function runMigrations() {
       db.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_priority   ON tasks(priority)`);
       db.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_created    ON tasks(created_at)`);
       db.exec(`CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status)`);
-      // Rebuild FTS after schema change
-      rebuildFts();
+      // Rebuild FTS after schema change - with error handling
+      try { rebuildFts(); } catch (e) { console.error('[DB] FTS rebuild failed:', e.message); }
     },
   ];
 

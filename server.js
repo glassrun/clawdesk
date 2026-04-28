@@ -6,6 +6,37 @@ const db = require('./db');
 const { nextId } = db;
 const cors = require('cors');
 
+// ===================== GLOBAL ERROR HANDLERS =====================
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Server] Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[Server] Uncaught Exception:', err);
+  process.exit(1);
+});
+
+// ===================== RETRY HELPER =====================
+
+// Exponential backoff retry for transient failures
+async function withRetry(fn, opts = {}) {
+  const maxRetries = opts.maxRetries || 3;
+  const baseDelay = opts.baseDelay || 1000;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt === maxRetries) throw err;
+      const isRetryable = err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT' || err.code === 'ECONNREFUSED' || err.message?.includes('SQLITE_BUSY');
+      if (!isRetryable) throw err;
+      const delay = baseDelay * Math.pow(2, attempt - 1);
+      console.log(`[Retry] ${err.message}, waiting ${delay}ms (attempt ${attempt}/${maxRetries})`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+}
+
 const app = express();
 const PORT = process.env.PORT || 3777;
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
@@ -460,8 +491,8 @@ function startHeartbeatEngine() {
         broadcastSSE('heartbeat', { results: r, ts: Date.now() });
       }
     } catch (e) { console.error('[Heartbeat]', e.message); }
-  }, 60000);
-  console.log('[Heartbeat] Engine started (60s interval)');
+  }, 1000);
+  console.log('[Heartbeat] Engine started (1s interval)');
 }
 
 // ===================== API =====================
