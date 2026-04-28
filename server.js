@@ -431,7 +431,7 @@ async function executeTask(agent, task) {
   }
 }
 
-async function triggerHeartbeat(agent) {
+async function triggerHeartbeat(agent, heartbeatBatch) {
   const tasks = db.loadTasks();
   const pending = tasks.filter(t => t.assigned_agent_id === agent.id && t.status === 'pending' && (!t.dependency_id || tasks.find(d => d.id === t.dependency_id)?.status === 'done')).sort((a, b) => {
     const pri = { high: 0, medium: 1, low: 2 };
@@ -443,11 +443,11 @@ async function triggerHeartbeat(agent) {
     const a = agents.find(x => x.id === agent.id);
     if (a) a.last_heartbeat = new Date().toISOString();
     db.saveAgents(agents);
-    cycleHeartbeats.push({ agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: { action: 'no_pending_tasks' }, status: 'idle' });
+    const entry = { agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: { action: 'no_pending_tasks' }, status: 'idle' };
+    if (heartbeatBatch) { heartbeatBatch.push(entry); } else { const hbs = db.loadHeartbeats(); hbs.push({ id: nextId('heartbeats'), ...entry, action_taken: JSON.stringify(entry.action_taken) }); db.saveHeartbeats(hbs); }
     return { agent: agent.name, action: 'idle' };
   }
   const task = pending[0];
-  // Mark in_progress with timestamp
   setTaskStatus(task.id, 'in_progress');
   try {
     const result = await executeTask(agent, task);
@@ -455,7 +455,8 @@ async function triggerHeartbeat(agent) {
     const a = agents.find(x => x.id === agent.id);
     if (a) a.last_heartbeat = new Date().toISOString();
     db.saveAgents(agents);
-    cycleHeartbeats.push({ agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: result, status: result.action === 'failed' ? 'error' : 'ok' });
+    const entry = { agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: result, status: result.action === 'failed' ? 'error' : 'ok' };
+    if (heartbeatBatch) { heartbeatBatch.push(entry); } else { const hbs = db.loadHeartbeats(); hbs.push({ id: nextId('heartbeats'), ...entry, action_taken: JSON.stringify(entry.action_taken) }); db.saveHeartbeats(hbs); }
     return { agent: agent.name, ...result };
   } catch (err) {
     setTaskStatus(task.id, 'pending');
@@ -463,7 +464,8 @@ async function triggerHeartbeat(agent) {
     const a = agents.find(x => x.id === agent.id);
     if (a) a.last_heartbeat = new Date().toISOString();
     db.saveAgents(agents);
-    cycleHeartbeats.push({ agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: { action: 'error', error: err.message }, status: 'error' });
+    const entry = { agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: { action: 'error', error: err.message }, status: 'error' };
+    if (heartbeatBatch) { heartbeatBatch.push(entry); } else { const hbs = db.loadHeartbeats(); hbs.push({ id: nextId('heartbeats'), ...entry, action_taken: JSON.stringify(entry.action_taken) }); db.saveHeartbeats(hbs); }
     return { agent: agent.name, action: 'error', error: err.message };
   }
 }
@@ -474,6 +476,7 @@ async function runHeartbeatCycle() {
   const cycleStart = Date.now();
   let results = [];
   const cycleHeartbeats = [];
+  const cycleIdBase = (db.db.prepare('SELECT MAX(id) as maxId FROM heartbeats').get().maxId || 0);
   try {
     // Reset stuck tasks — only tasks that have been in_progress for >10 min
     const tasks = db.loadTasks();
@@ -538,7 +541,7 @@ async function runHeartbeatCycle() {
       heartbeatPromises.push(
         (async () => {
           try {
-            const hbPromise = triggerHeartbeat(agent);
+            const hbPromise = triggerHeartbeat(agent, cycleHeartbeats);
             const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('heartbeat timeout (200s)')), 200000));
             return await Promise.race([hbPromise, timeoutPromise]);
           } catch (e) {
@@ -554,10 +557,10 @@ async function runHeartbeatCycle() {
     broadcastSSE('heartbeat', { results, ts: Date.now() });
     // Batch-save all heartbeats from this cycle in one write
     if (cycleHeartbeats.length > 0) {
+      let idCounter = cycleIdBase;
+      const entries = cycleHeartbeats.map(hb => ({ id: ++idCounter, ...hb, action_taken: JSON.stringify(hb.action_taken) }));
       const hbs = db.loadHeartbeats();
-      for (const hb of cycleHeartbeats) {
-        hbs.push({ id: nextId('heartbeats'), ...hb, action_taken: JSON.stringify(hb.action_taken) });
-      }
+      hbs.push(...entries);
       db.saveHeartbeats(hbs);
     }
     broadcastSSE('heartbeat', { results, ts: Date.now() });
