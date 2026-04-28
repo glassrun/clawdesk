@@ -52,7 +52,7 @@ export default function AgentsPage() {
   
   useEffect(() => {
     if (!lastMessage) return;
-    if (lastMessage.event === "tasks" || lastMessage.event === "heartbeat") {
+    if (lastMessage.event === "tasks") {
       loadData();
     }
   }, [lastMessage]);

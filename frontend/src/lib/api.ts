@@ -105,7 +105,7 @@ export async function getTasks(params: Record<string, string> = {}) {
 
 export async function getHeartbeats(params: Record<string, string> = {}) {
   const query = new URLSearchParams(params).toString();
-  return api<{ data: Heartbeat[] }>(`/api/heartbeats?${query}`);
+  return api<{ data: Heartbeat[]; total: number; page: number; limit: number; pages: number }>(`/api/heartbeats?${query}`);
 }
 
 export async function syncAgents() {

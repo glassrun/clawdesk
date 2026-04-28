@@ -21,20 +21,27 @@ export default function HeartbeatsPage() {
   const [heartbeats, setHeartbeats] = useState<Heartbeat[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterStatus>("all");
+  const [total, setTotal] = useState(0);
+  const [pages, setPages] = useState(1);
+  const [currentPage, setCurrentPage] = useState(1);
   const { lastMessage, connected } = useStream();
 
   const refreshData = useCallback(async () => {
     try {
-      const res = await getHeartbeats();
+      const res = await getHeartbeats({ limit: "500" });
       setHeartbeats(res.data || []);
+      setTotal(res.total || res.data?.length || 0);
+      setPages(res.pages || 1);
     } catch (e) { console.error(e); }
   }, []);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await getHeartbeats();
+      const res = await getHeartbeats({ limit: "500" });
       setHeartbeats(res.data || []);
+      setTotal(res.total || res.data?.length || 0);
+      setPages(res.pages || 1);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, []);
@@ -43,7 +50,7 @@ export default function HeartbeatsPage() {
 
   useEffect(() => {
     if (!lastMessage) return;
-    if (lastMessage.event === "heartbeat") refreshData();
+    if (lastMessage.event === "tasks") refreshData();
   }, [lastMessage, refreshData]);
 
   const filtered = filter === "all"
@@ -64,7 +71,8 @@ export default function HeartbeatsPage() {
         <div>
           <h1 className="text-xl font-bold">Heartbeat Log</h1>
           <p className="text-sm text-muted mt-1">
-            {stats.total} total · {stats.ok} healthy · {stats.warning} warnings · {stats.failed} failed
+            {stats.total} shown · {stats.ok} healthy · {stats.warning} warnings · {stats.failed} failed
+            {total > stats.total ? ` · ${total} total` : ''}
           </p>
         </div>
         <div className="flex items-center gap-2">

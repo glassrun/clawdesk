@@ -443,9 +443,7 @@ async function triggerHeartbeat(agent) {
     const a = agents.find(x => x.id === agent.id);
     if (a) a.last_heartbeat = new Date().toISOString();
     db.saveAgents(agents);
-    const hbs = db.loadHeartbeats();
-    hbs.push({ id: nextId('heartbeats'), agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'no_pending_tasks' }), status: 'idle' });
-    db.saveHeartbeats(hbs);
+    cycleHeartbeats.push({ agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: { action: 'no_pending_tasks' }, status: 'idle' });
     return { agent: agent.name, action: 'idle' };
   }
   const task = pending[0];
@@ -457,9 +455,7 @@ async function triggerHeartbeat(agent) {
     const a = agents.find(x => x.id === agent.id);
     if (a) a.last_heartbeat = new Date().toISOString();
     db.saveAgents(agents);
-    const hbs = db.loadHeartbeats();
-    hbs.push({ id: nextId('heartbeats'), agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: JSON.stringify(result), status: result.action === 'failed' ? 'error' : 'ok' });
-    db.saveHeartbeats(hbs);
+    cycleHeartbeats.push({ agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: result, status: result.action === 'failed' ? 'error' : 'ok' });
     return { agent: agent.name, ...result };
   } catch (err) {
     setTaskStatus(task.id, 'pending');
@@ -467,21 +463,17 @@ async function triggerHeartbeat(agent) {
     const a = agents.find(x => x.id === agent.id);
     if (a) a.last_heartbeat = new Date().toISOString();
     db.saveAgents(agents);
-    const hbs = db.loadHeartbeats();
-    hbs.push({ id: nextId('heartbeats'), agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'error', error: err.message }), status: 'error' });
-    db.saveHeartbeats(hbs);
+    cycleHeartbeats.push({ agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: { action: 'error', error: err.message }, status: 'error' });
     return { agent: agent.name, action: 'error', error: err.message };
   }
 }
 
-let heartbeatRunning = false; // Concurrency guard
 let heartbeatStats = { cycles: 0, totalMs: 0, agentsProcessed: 0, errors: 0, lastCycleMs: 0, last10Ms: [] };
 
 async function runHeartbeatCycle() {
-  if (heartbeatRunning) { console.log('[Heartbeat] Cycle already running, skipping'); return []; }
-  heartbeatRunning = true;
   const cycleStart = Date.now();
   let results = [];
+  const cycleHeartbeats = [];
   try {
     // Reset stuck tasks — only tasks that have been in_progress for >10 min
     const tasks = db.loadTasks();
@@ -502,12 +494,10 @@ async function runHeartbeatCycle() {
     if (changed) {
       db.saveTasks(tasks);
       if (stuckResetLog.length > 0) {
-        const hbs = db.loadHeartbeats();
-        for (const s of stuckResetLog) {
-          hbs.push({ id: nextId('heartbeats'), agent_id: null, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'stuck_reset', ...s }), status: 'warning' });
-        }
-        db.saveHeartbeats(hbs);
         console.log(`[Heartbeat] Reset ${stuckResetLog.length} stuck task(s): ${stuckResetLog.map(s => s.title).join(', ')}`);
+        for (const s of stuckResetLog) {
+          cycleHeartbeats.push({ agent_id: null, triggered_at: new Date().toISOString(), action_taken: { action: 'stuck_reset', ...s }, status: 'warning' });
+        }
       }
     }
 
@@ -531,12 +521,10 @@ async function runHeartbeatCycle() {
     if (retryChanged) {
       db.saveTasks(tasks);
       if (retryLog.length > 0) {
-        const hbs = db.loadHeartbeats();
-        for (const s of retryLog) {
-          hbs.push({ id: nextId('heartbeats'), agent_id: null, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'auto_retry', ...s }), status: 'ok' });
-        }
-        db.saveHeartbeats(hbs);
         console.log(`[Heartbeat] Auto-retry: ${retryLog.length} failed task(s): ${retryLog.map(s => `${s.title} (${s.attempt}/3)`).join(', ')}`);
+        for (const s of retryLog) {
+          cycleHeartbeats.push({ agent_id: null, triggered_at: new Date().toISOString(), action_taken: { action: 'auto_retry', ...s }, status: 'ok' });
+        }
       }
     }
 
@@ -545,7 +533,7 @@ async function runHeartbeatCycle() {
     // Run all agent heartbeats in parallel
     const heartbeatPromises = [];
     for (const agent of agents) {
-      if (agent.last_heartbeat && (now - new Date(agent.last_heartbeat)) / 60000 < agent.heartbeat_interval) continue;
+      if (agent.last_heartbeat && (now - new Date(agent.last_heartbeat)) / 1000 < agent.heartbeat_interval) continue;
       // Per-agent timeout: don't let one agent block the whole cycle
       heartbeatPromises.push(
         (async () => {
@@ -564,9 +552,17 @@ async function runHeartbeatCycle() {
     // Wait for all parallel heartbeats
     results = await Promise.all(heartbeatPromises);
     broadcastSSE('heartbeat', { results, ts: Date.now() });
+    // Batch-save all heartbeats from this cycle in one write
+    if (cycleHeartbeats.length > 0) {
+      const hbs = db.loadHeartbeats();
+      for (const hb of cycleHeartbeats) {
+        hbs.push({ id: nextId('heartbeats'), ...hb, action_taken: JSON.stringify(hb.action_taken) });
+      }
+      db.saveHeartbeats(hbs);
+    }
+    broadcastSSE('heartbeat', { results, ts: Date.now() });
     return results;
   } finally {
-    heartbeatRunning = false;
     const elapsed = Date.now() - cycleStart;
     heartbeatStats.cycles++;
     heartbeatStats.totalMs += elapsed;
@@ -575,7 +571,6 @@ async function runHeartbeatCycle() {
     if (heartbeatStats.last10Ms.length > 10) heartbeatStats.last10Ms.shift();
     heartbeatStats.agentsProcessed += results.length;
     heartbeatStats.errors += results.filter(r => r.action === 'error').length;
-    // Broadcast all results to SSE clients
     if (results.length > 0) broadcastSSE('heartbeat', { results, ts: Date.now() });
     // Periodic cleanup every 50 cycles (~50 min)
     if (heartbeatStats.cycles % 50 === 0 && heartbeatStats.cycles > 0) {
