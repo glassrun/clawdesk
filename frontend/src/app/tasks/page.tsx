@@ -237,14 +237,15 @@ export default function TasksPage() {
                 <th className="p-3">Status</th>
                 <th className="p-3">Priority</th>
                 <th className="p-3">Agent</th>
+                <th className="p-3">Depends On</th>
                 <th className="p-3">Project</th>
                 <th className="p-3">Created</th>
                 <th className="p-3">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {loading ? <tr><td colSpan={8} className="text-center text-muted py-8">Loading...</td></tr> :
-              tasks.length === 0 ? <tr><td colSpan={8} className="text-center text-muted py-8">No tasks</td></tr> :
+              {loading ? <tr><td colSpan={9} className="text-center text-muted py-8">Loading...</td></tr> :
+              tasks.length === 0 ? <tr><td colSpan={9} className="text-center text-muted py-8">No tasks</td></tr> :
               tasks.map((t, idx) => (
                 <React.Fragment key={`task-${t.id}-${idx}`}>
                   <tr>
@@ -259,7 +260,19 @@ export default function TasksPage() {
                       </select>
                     </td>
                     <td className="p-3">{priorityBadge(t.priority || "medium")}</td>
-                    <td className="p-3">{t.agent_name ? <span>{t.agent_name}</span> : <span className="text-soft">unassigned</span>}</td>
+                    <td className="p-3">
+                      {t.agent_name ? <span>{t.agent_name}</span> : <span className="text-soft">unassigned</span>}
+                    </td>
+                    <td className="p-3 text-xs">
+                      {t.dependency_id ? (
+                        <span
+                          className={`badge ${t.dep_title ? (tasks.find(x => x.id === t.dependency_id)?.status === 'done' ? 'status-done' : 'status-pending') : ''}`}
+                          title={`Task #${t.dependency_id}${t.dep_title ? ': ' + t.dep_title : ''}`}
+                        >
+                          #{t.dependency_id}
+                        </span>
+                      ) : <span className="text-soft">—</span>}
+                    </td>
                     <td className="p-3 text-muted">{projMap[t.project_id] || `Project #${t.project_id}`}</td>
                     <td className="p-3 text-soft text-xs">{timeAgo(t.created_at)}</td>
                     <td className="p-3">
@@ -275,7 +288,7 @@ export default function TasksPage() {
                     </td>
                   </tr>
                   {expandedResults === t.id && taskResults[t.id] && (
-                    <tr><td colSpan={8} className="p-3" style={{background: "var(--bg)"}}>
+                    <tr><td colSpan={9} className="p-3" style={{background: "var(--bg)"}}>
                       <div className="text-xs max-h-40 overflow-y-auto">
                         {taskResults[t.id].length === 0 ? <div className="text-soft">No results</div> : taskResults[t.id].map((r: any, i: number) => (
                           <div key={i} className="border-b pb-2 mb-2">

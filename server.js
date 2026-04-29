@@ -895,7 +895,13 @@ app.get('/api/projects/:id/tasks', (req, res) => {
   if (req.query.priority) tasks = tasks.filter(t => t.priority === req.query.priority);
   if (req.query.agent_id) tasks = tasks.filter(t => t.assigned_agent_id === +req.query.agent_id);
   if (req.query.search) { const s = req.query.search.toLowerCase(); tasks = tasks.filter(t => t.title.toLowerCase().includes(s)); }
-  res.json(tasks.map(t => { const a = agents.find(x => x.id === t.assigned_agent_id); const cb = agents.find(x => x.id === t.created_by_agent_id); return { ...t, agent_name: a?.name, openclaw_agent_id: a?.openclaw_agent_id, created_by_agent_slug: cb?.openclaw_agent_id }; }));
+  const allTasks = db.loadTasks();
+  res.json(tasks.map(t => {
+    const a = agents.find(x => x.id === t.assigned_agent_id);
+    const cb = agents.find(x => x.id === t.created_by_agent_id);
+    const dep = allTasks.find(d => d.id === t.dependency_id);
+    return { ...t, agent_name: a?.name, openclaw_agent_id: a?.openclaw_agent_id, created_by_agent_slug: cb?.openclaw_agent_id, dep_title: dep?.title || null };
+  }));
 });
 app.post('/api/projects/:id/tasks', (req, res) => {
   if (!db.loadProjects().find(p => p.id === +req.params.id)) return res.status(404).json({ error: 'project not found' });
