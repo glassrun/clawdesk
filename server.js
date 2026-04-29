@@ -74,7 +74,7 @@ app.use((req, res, next) => {
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-// SSE broadcast helper — used after db.saveTasks()
+// SSE broadcast helper - used after db.saveTasks()
 function broadcastTaskUpdate(tasks) {
   if (sseClients.size > 0) broadcastSSE('tasks', { tasks, ts: Date.now() });
 }
@@ -84,9 +84,9 @@ function normalizeTask(t, agents) {
   return { ...t, priority: t.priority || 'medium', agent_name: a?.name, openclaw_agent_id: a?.openclaw_agent_id };
 }
 
-function runOpenClawAgent(agentId, message, timeout = 180000, cwd) {
-  return new Promise((resolve, reject) => { 
-    const args = ['agent', '--agent', agentId, '--message', message, '--json', '--timeout', String(Math.floor((timeout || 180000) / 1000))];
+function runOpenClawAgent(agentId, message, timeout = 600000, cwd) {
+  return new Promise((resolve, reject) => {
+    const args = ['agent', '--agent', agentId, '--message', message, '--json', '--timeout', String(Math.floor((timeout || 600000) / 1000))];
     const { spawn } = require('child_process');
     const child = spawn('/usr/bin/node', ['/home/openclaw/.npm-global/lib/node_modules/openclaw/openclaw.mjs', ...args]);
     let stdout = '', stderr = '';
@@ -108,7 +108,7 @@ function runOpenClawAgent(agentId, message, timeout = 180000, cwd) {
 }
 
 function createOpenClawAgent(agentId, name, workspace, opts = {}) {
-  return new Promise((resolve, reject) => { 
+  return new Promise((resolve, reject) => {
     const wsDir = workspace || path.join(process.env.HOME, `.openclaw/workspace-${agentId}`);
     fs.mkdirSync(wsDir, { recursive: true });
 
@@ -116,7 +116,7 @@ function createOpenClawAgent(agentId, name, workspace, opts = {}) {
     const emoji = opts.emoji || '🤖';
     const vibe = opts.vibe || 'helpful and focused';
     fs.writeFileSync(path.join(wsDir, 'IDENTITY.md'), `# IDENTITY.md\n\n- **Name:** ${name}\n- **Role:** ${vibe}\n- **Creature:** AI agent\n- **Vibe:** ${vibe.split('.').filter(s=>s.trim())[0].split(',').slice(0,2).map(s=>s.trim()).join(', ') || 'focused and effective'}\n- **Emoji:** ${emoji}\n`);
-    fs.writeFileSync(path.join(wsDir, 'SOUL.md'), `# SOUL.md\n\nYou are ${name}. ${vibe}. Be resourceful, direct, and actually do the work — don't just say you did.\n`);
+    fs.writeFileSync(path.join(wsDir, 'SOUL.md'), `# SOUL.md\n\nYou are ${name}. ${vibe}. Be resourceful, direct, and actually do the work - don't just say you did.\n`);
     fs.writeFileSync(path.join(wsDir, 'USER.md'), `# USER.md\n\nS is your operator. Listen carefully. Execute precisely. No filler.\n`);
 
     const cmd = `${OPENCLAW_CLI} agents add "${agentId}" --non-interactive --workspace "${wsDir}" --json`;
@@ -130,7 +130,7 @@ function createOpenClawAgent(agentId, name, workspace, opts = {}) {
 }
 
 function deleteOpenClawAgent(agentId) {
-  return new Promise((resolve, reject) => { 
+  return new Promise((resolve, reject) => {
     const cmd = `${OPENCLAW_CLI} agents delete "${agentId}" --force --json`;
     exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
       if (err) return reject(new Error(`Failed to delete agent: ${err.message}`));
@@ -140,9 +140,9 @@ function deleteOpenClawAgent(agentId) {
 }
 
 function syncFromOpenClaw() {
-  // Use `openclaw agents list --json` via CLI only — no fallback
+  // Use `openclaw agents list --json` via CLI only - no fallback
   const CLI = 'node /home/openclaw/.npm-global/lib/node_modules/openclaw/openclaw.mjs';
-  const TIMEOUT_MS = 120000; // 2 minutes — CLI can be slow
+  const TIMEOUT_MS = 300000; // 5 minutes
   return new Promise((resolve, reject) => {
     const { exec } = require('child_process');
     let timedOut = false;
@@ -177,7 +177,7 @@ function syncFromOpenClaw() {
   });
 }
 
-// syncFromFilesystem removed — CLI only
+// syncFromFilesystem removed - CLI only
 
 // ===================== SEED =====================
 
@@ -201,14 +201,14 @@ function setTaskStatus(taskId, newStatus) {
     if (projectTasks.length > 0 && projectTasks.every(x => x.status === 'done')) {
       const projects = db.loadProjects();
       const p = projects.find(x => x.id === t.project_id);
-      if (p && p.status === 'active') { p.status = 'completed'; db.saveProjects(projects); console.log(`[Auto] Project "${p.title}" marked completed — all tasks done`); }
+      if (p && p.status === 'active') { p.status = 'completed'; db.saveProjects(projects); console.log(`[Auto] Project "${p.title}" marked completed - all tasks done`); }
     }
   }
   // Reopen project if task is un-done
   if (oldStatus === 'done' && newStatus !== 'done') {
     const projects = db.loadProjects();
     const p = projects.find(x => x.id === t.project_id);
-    if (p && p.status === 'completed') { p.status = 'active'; db.saveProjects(projects); console.log(`[Auto] Project "${p.title}" reopened — task un-completed`); }
+    if (p && p.status === 'completed') { p.status = 'active'; db.saveProjects(projects); console.log(`[Auto] Project "${p.title}" reopened - task un-completed`); }
   }
 
   // Recurring task: clone on completion
@@ -241,14 +241,14 @@ function setTaskStatus(taskId, newStatus) {
 function parseTaskHandoffs(output, projectId) {
   const handoffs = [];
   if (!output || typeof output !== 'string') return handoffs;
-  
+
   // Try to find JSON blocks in the output
   const jsonBlocks = output.match(/\{[^{}]*\}/g) || [];
-  
+
   for (const block of jsonBlocks) {
     try {
       const parsed = JSON.parse(block);
-      
+
       // Check for handoff format 1: {handoff: {title, description, assigned_to_agent_id}}
       if (parsed.handoff && parsed.handoff.title && parsed.handoff.assigned_to_agent_id) {
         const agents = db.loadAgents();
@@ -271,7 +271,7 @@ function parseTaskHandoffs(output, projectId) {
           handoffs.push({ ...newTask, assigned_agent_name: targetAgent.name, from_handoff: true });
         }
       }
-      
+
       // Check for handoff format 2: {create_task_for: "agent-id", title: "...", description: "..."}
       if (parsed.create_task_for && parsed.title) {
         const agents = db.loadAgents();
@@ -296,7 +296,7 @@ function parseTaskHandoffs(output, projectId) {
       }
     } catch { /* ignore parse errors */ }
   }
-  
+
   return handoffs;
 }
 
@@ -359,7 +359,7 @@ async function executeTask(agent, task) {
       }
       createdAgentInfo = { agent_id: task.creates_agent, workspace: oc.workspace };
       message += `\n[Created agent: ${task.creates_agent}]`;
-      
+
       // Auto-create onboarding task for newly created agent
       try {
         const agents = db.loadAgents();
@@ -393,11 +393,11 @@ async function executeTask(agent, task) {
 
   const startTime = Date.now();
   try {
-    
-    const result = await runOpenClawAgent(agent.openclaw_agent_id, message, 180000, undefined);
+
+    const result = await runOpenClawAgent(agent.openclaw_agent_id, message, 600000, undefined);
     const durationMs = Date.now() - startTime;
     const output = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
-    
+
     // Parse output for task handoff signals
     const handoffs = parseTaskHandoffs(output, task.project_id);
     for (const h of handoffs) {
@@ -406,7 +406,7 @@ async function executeTask(agent, task) {
       hbs.push({ id: nextId('heartbeats'), agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'handoff', to: h.assigned_agent_name, title: h.title }), status: 'ok' });
       db.saveHeartbeats(hbs);
     }
-    
+
     setTaskStatus(task.id, 'done');
     // Store result with duration
     const results = db.loadTaskResults();
@@ -478,7 +478,7 @@ async function runHeartbeatCycle() {
   const cycleHeartbeats = [];
   const cycleIdBase = (db.db.prepare('SELECT MAX(id) as maxId FROM heartbeats').get().maxId || 0);
   try {
-    // Reset stuck tasks — only tasks that have been in_progress for >10 min
+    // Reset stuck tasks - only tasks that have been in_progress for >10 min
     const tasks = db.loadTasks();
     const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
     let changed = false;
@@ -542,7 +542,7 @@ async function runHeartbeatCycle() {
         (async () => {
           try {
             const hbPromise = triggerHeartbeat(agent, cycleHeartbeats);
-            const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('heartbeat timeout (200s)')), 200000));
+            const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('heartbeat timeout (600s)')), 600000));
             return await Promise.race([hbPromise, timeoutPromise]);
           } catch (e) {
             console.error(`[Heartbeat] ${agent.name}: ${e.message}`);
@@ -551,7 +551,7 @@ async function runHeartbeatCycle() {
         })()
       );
     }
-    
+
     // Wait for all parallel heartbeats
     results = await Promise.all(heartbeatPromises);
     broadcastSSE('heartbeat', { results, ts: Date.now() });
@@ -682,7 +682,7 @@ app.post('/api/agents', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.get('/api/agents/:id', (req, res) => { const a = db.loadAgents().find(x => x.id === +req.params.id); a ? res.json(a) : res.status(404).json({ error: 'not found' }); });
-// Agent stats — per-agent workload summary
+// Agent stats - per-agent workload summary
 app.get('/api/agents/:id/stats', (req, res) => {
   const agent = db.loadAgents().find(x => x.id === +req.params.id);
   if (!agent) return res.status(404).json({ error: 'not found' });
@@ -802,7 +802,7 @@ app.post('/api/projects', (req, res) => {
     const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     finalWorkspace = path.join(process.env.HOME, `clawdesk-projects/${slug}-${Date.now()}`);
   }
-  
+
   // Create workspace directory
   fs.mkdirSync(finalWorkspace, { recursive: true, mode: 0o755 });
 
@@ -826,7 +826,7 @@ app.get('/api/projects/:id', (req, res) => {
   const done = tasks.filter(t => t.status === 'done').length;
   res.json({ ...p, tasks, task_total: tasks.length, task_done: done, completion_pct: tasks.length > 0 ? Math.round(done / tasks.length * 100) : 0 });
 });
-// Project stats — aggregated metrics for a project
+// Project stats - aggregated metrics for a project
 app.get('/api/projects/:id/stats', (req, res) => {
   const p = db.loadProjects().find(x => x.id === +req.params.id);
   if (!p) return res.status(404).json({ error: 'not found' });
@@ -985,7 +985,7 @@ app.post('/api/projects/:id/tasks/from-agent', (req, res) => {
   const a = agents.find(x => x.id === t.assigned_agent_id);
   res.status(201).json({ ...t, agent_name: a?.name, openclaw_agent_id: a?.openclaw_agent_id, created_by: creatorAgent.name });
 });
-// Task summary — lightweight aggregate counts without fetching all tasks
+// Task summary - lightweight aggregate counts without fetching all tasks
 app.get('/api/tasks/summary', (req, res) => {
   let tasks = db.loadTasks();
   if (req.query.project_id) tasks = tasks.filter(t => String(t.project_id) === String(req.query.project_id));
@@ -1048,14 +1048,14 @@ app.put('/api/tasks/:id', (req, res) => {
       if (projectTasks.length > 0 && projectTasks.every(x => x.status === 'done')) {
         const projects = db.loadProjects();
         const p = projects.find(x => x.id === t.project_id);
-        if (p && p.status === 'active') { p.status = 'completed'; db.saveProjects(projects); console.log(`[Auto] Project "${p.title}" marked completed — all tasks done`); }
+        if (p && p.status === 'active') { p.status = 'completed'; db.saveProjects(projects); console.log(`[Auto] Project "${p.title}" marked completed - all tasks done`); }
       }
     }
     // Reopen project if a task is un-done from a completed project
     if (oldStatus === 'done' && status !== 'done') {
       const projects = db.loadProjects();
       const p = projects.find(x => x.id === t.project_id);
-      if (p && p.status === 'completed') { p.status = 'active'; db.saveProjects(projects); console.log(`[Auto] Project "${p.title}" reopened — task #${t.id} un-completed`); }
+      if (p && p.status === 'completed') { p.status = 'active'; db.saveProjects(projects); console.log(`[Auto] Project "${p.title}" reopened - task #${t.id} un-completed`); }
     }
   }
   db.saveTasks(tasks);
@@ -1077,7 +1077,7 @@ app.delete('/api/tasks/:id', (req, res) => {
   res.json({ ok: true, soft_deleted: true, dependency_references_cleared: cleared });
 });
 app.get('/api/tasks/:id/results', (req, res) => { res.json(db.loadTaskResults().filter(r => r.task_id === +req.params.id).sort((a, b) => b.id - a.id)); });
-// Task history — combined execution results + heartbeat entries mentioning this task
+// Task history - combined execution results + heartbeat entries mentioning this task
 app.get('/api/tasks/:id/history', (req, res) => {
   const allTasks = db.loadTasks();
   const task = allTasks.find(x => x.id === +req.params.id);
@@ -1113,7 +1113,7 @@ app.get('/api/tasks/:id/history', (req, res) => {
            total_heartbeat_entries: hbs.length
   });
 });
-// Reverse dependency lookup — tasks that depend on this task
+// Reverse dependency lookup - tasks that depend on this task
 app.get('/api/tasks/:id/dependents', (req, res) => {
   const task = db.loadTasks().find(x => x.id === +req.params.id);
   if (!task) return res.status(404).json({ error: 'not found' });
@@ -1124,7 +1124,7 @@ app.get('/api/tasks/:id/dependents', (req, res) => {
   });
   res.json({ task_id: task.id, task_title: task.title, blocked_by_this: dependents, count: dependents.length });
 });
-// Dependency chain — full chain of ancestors this task depends on
+// Dependency chain - full chain of ancestors this task depends on
 app.get('/api/tasks/:id/chain', (req, res) => {
   const tasks = db.loadTasks();
   const task = tasks.find(x => x.id === +req.params.id);
@@ -1141,7 +1141,7 @@ app.get('/api/tasks/:id/chain', (req, res) => {
   }
   res.json({ task_id: task.id, title: task.title, status: task.status, chain_length: chain.length, chain, blocked: chain.some(c => c.status !== 'done') });
 });
-// Duplicate a task — clones title/description/priority/agent/creates_agent, resets status to pending
+// Duplicate a task - clones title/description/priority/agent/creates_agent, resets status to pending
 app.post('/api/tasks/:id/duplicate', (req, res) => {
   const tasks = db.loadTasks();
   const orig = tasks.find(x => x.id === +req.params.id);
@@ -1149,7 +1149,7 @@ app.post('/api/tasks/:id/duplicate', (req, res) => {
   // Validate assigned agent still exists
   if (orig.assigned_agent_id) {
     const agents = db.loadAgents();
-    if (!agents.find(a => a.id === orig.assigned_agent_id)) return res.status(400).json({ error: 'assigned agent no longer exists — reassign before duplicating' });
+    if (!agents.find(a => a.id === orig.assigned_agent_id)) return res.status(400).json({ error: 'assigned agent no longer exists - reassign before duplicating' });
   }
   const t = {
     id: nextId('tasks'), project_id: orig.project_id,
@@ -1161,14 +1161,14 @@ app.post('/api/tasks/:id/duplicate', (req, res) => {
          created_by_agent_id: orig.created_by_agent_id,
          priority: orig.priority,
          created_at: new Date().toISOString(), completed_at: null
-         // intentionally omitting _retry_count, _status_changed_at — copies start clean
+         // intentionally omitting _retry_count, _status_changed_at - copies start clean
   };
   tasks.push(t);
   db.saveTasks(tasks);
   const a = db.loadAgents().find(x => x.id === t.assigned_agent_id);
   res.status(201).json({ ...t, agent_name: a?.name, openclaw_agent_id: a?.openclaw_agent_id });
 });
-// Bulk task update — update status/priority/agent for multiple tasks at once
+// Bulk task update - update status/priority/agent for multiple tasks at once
 app.post('/api/tasks/bulk', (req, res) => {
   const { task_ids, status, priority, assigned_agent_id } = req.body;
   if (!Array.isArray(task_ids) || task_ids.length === 0) return res.status(400).json({ error: 'task_ids must be a non-empty array' });
@@ -1200,7 +1200,7 @@ app.post('/api/tasks/bulk', (req, res) => {
       const projectTasks = tasks.filter(x => x.project_id === pid);
       if (projectTasks.length > 0 && projectTasks.every(x => x.status === 'done')) {
         const p = projects.find(x => x.id === pid);
-        if (p && p.status === 'active') { p.status = 'completed'; changed = true; console.log(`[Auto] Project "${p.title}" marked completed — all tasks done`); }
+        if (p && p.status === 'active') { p.status = 'completed'; changed = true; console.log(`[Auto] Project "${p.title}" marked completed - all tasks done`); }
       }
     }
     if (changed) db.saveProjects(projects);
@@ -1225,7 +1225,7 @@ app.post('/api/tasks/:id/run', async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-// Cancel an in-progress task — resets to pending
+// Cancel an in-progress task - resets to pending
 app.post('/api/tasks/:id/cancel', (req, res) => {
   const tasks = db.loadTasks();
   const t = tasks.find(x => x.id === +req.params.id);
@@ -1251,7 +1251,7 @@ app.post('/api/tasks/:id/notes', (req, res) => {
   db.saveTaskResults(results);
   res.json({ ok: true, task_id: task.id, note });
 });
-// Reassign a task to a different agent (lightweight — no need for full PUT)
+// Reassign a task to a different agent (lightweight - no need for full PUT)
 app.post('/api/tasks/:id/assign', (req, res) => {
   const { agent_id } = req.body;
   if (!agent_id) return res.status(400).json({ error: 'agent_id required' });
@@ -1266,7 +1266,7 @@ app.post('/api/tasks/:id/assign', (req, res) => {
   db.saveTasks(tasks);
   res.json({ ok: true, task_id: t.id, title: t.title, old_agent_id: oldAgentId, new_agent_id: agent.id, new_agent_name: agent.name });
 });
-// Retry a failed task — resets to pending so heartbeat picks it up, or runs immediately
+// Retry a failed task - resets to pending so heartbeat picks it up, or runs immediately
 app.post('/api/tasks/:id/retry', async (req, res) => {
   const tasks = db.loadTasks();
   const task = tasks.find(x => x.id === +req.params.id);
@@ -1386,7 +1386,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// System stats — aggregate overview of all data
+// System stats - aggregate overview of all data
 app.get('/api/system/stats', (req, res) => {
   const stats = db.getDbStats();
   stats.uptime_seconds = Math.round(process.uptime());
@@ -1395,7 +1395,7 @@ app.get('/api/system/stats', (req, res) => {
   res.json(stats);
 });
 
-// Data integrity — clean orphaned records and purge soft-deleted
+// Data integrity - clean orphaned records and purge soft-deleted
 app.post('/api/system/cleanup', (req, res) => {
   const tasks = db.loadTasks();
   let clearedDates = 0;
@@ -1408,13 +1408,13 @@ app.post('/api/system/cleanup', (req, res) => {
   res.json({ ok: true, stale_completed_at_cleared: clearedDates, hard_deleted_tasks: dt, hard_deleted_projects: dp });
 });
 
-// VACUUM — reclaim DB space after heavy deletes
+// VACUUM - reclaim DB space after heavy deletes
 app.post('/api/system/vacuum', (req, res) => {
   db.vacuumDb();
   res.json({ ok: true });
 });
 
-// Batch task creation — POST /api/tasks/batch { tasks: [...] }
+// Batch task creation - POST /api/tasks/batch { tasks: [...] }
 app.post('/api/tasks/batch', (req, res) => {
   const { tasks } = req.body;
   if (!Array.isArray(tasks) || tasks.length === 0) return res.status(400).json({ error: 'tasks must be a non-empty array' });
