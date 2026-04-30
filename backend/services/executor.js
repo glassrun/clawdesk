@@ -3,6 +3,8 @@ const fs = require('fs');
 const { exec } = require('child_process');
 const { nextId } = require('../db');
 const OPENCLAW_CLI = process.env.OPENCLAW_CLI || '/home/openclaw/.npm-global/bin/openclaw';
+const OPENCLAW_NODE = process.env.OPENCLAW_NODE || '/usr/bin/node';
+const OPENCLAW_MODULE = process.env.OPENCLAW_MODULE || '/home/openclaw/.npm-global/lib/node_modules/openclaw/openclaw.mjs';
 const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3777}`;
 
 // Re-exported so routes can access without circular
@@ -14,7 +16,7 @@ function runOpenClawAgent(agentId, message, timeout = 600000, cwd) {
   return new Promise((resolve, reject) => {
     const args = ['agent', '--agent', agentId, '--message', message, '--json', '--timeout', String(Math.floor((timeout || 600000) / 1000))];
     const { spawn } = require('child_process');
-    const child = spawn('/usr/bin/node', ['/home/openclaw/.npm-global/lib/node_modules/openclaw/openclaw.mjs', ...args]);
+    const child = spawn(OPENCLAW_NODE, [OPENCLAW_MODULE, ...args]);
     let stdout = '', stderr = '';
     child.stdout.on('data', d => stdout += d);
     child.stderr.on('data', d => stderr += d);
