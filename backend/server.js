@@ -65,7 +65,6 @@ function broadcastTaskUpdate(tasks) {
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
-app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1h' }));
 
 app.use((req, res, next) => {
   const start = Date.now();

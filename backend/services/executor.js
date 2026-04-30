@@ -66,8 +66,6 @@ function deleteOpenClawAgent(agentId) {
 
 // ===================== TASK EXECUTION =====================
 
-const { parseTaskHandoffs } = require('../lib/handoffs');
-
 async function executeTask(agent, task) {
   const db = require('../db');
   const projects = db.loadProjects();
@@ -90,14 +88,7 @@ async function executeTask(agent, task) {
   if (task.description) message += `\n${task.description}`;
 
   message += `\n\n--- TOOLS ---`;
-  message += `\nYou can create new tasks for this project via HTTP POST:`;
-  message += `\nURL: ${BASE_URL}/api/projects/${task.project_id}/tasks/from-agent`;
-  message += `\nBody (JSON): { agent_id: "${agent.openclaw_agent_id}", title: "task title", description: "details", assigned_to_agent_id: "target-agent" }`;
-  message += `\nValid agent IDs: ${db.loadAgents().map(a => a.openclaw_agent_id).join(', ')}`;
-  message += `\nIMPORTANT: assigned_to_agent_id is REQUIRED. Pick the agent who should do the work.`;
-  message += `\nTo create MULTIPLE tasks, make MULTIPLE calls - one endpoint call per task.`;
-  message += `\n`;
-  message += `\nYou can also create new agents for this project via HTTP POST:`;
+  message += `\nYou can create new agents for this project via HTTP POST:`;
   message += `\nURL: ${BASE_URL}/api/agents`;
   message += `\nBody (JSON): { job_title: "Senior Security Engineer", job_description: "Penetration testing, audits..." }`;
   message += `\nThis creates the agent, its workspace, identity files, and registers it with OpenClaw.`;
@@ -158,14 +149,6 @@ async function executeTask(agent, task) {
     const result = await runOpenClawAgent(agent.openclaw_agent_id, message, 600000, undefined);
     const durationMs = Date.now() - startTime;
     const output = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
-
-    const handoffs = parseTaskHandoffs(output, task.project_id);
-    for (const h of handoffs) {
-      console.log(`[Handoff] ${agent.name} handed off task to ${h.assigned_agent_name}`);
-      const hbs = db.loadHeartbeats();
-      hbs.push({ id: nextId('heartbeats'), agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'handoff', to: h.assigned_agent_name, title: h.title }), status: 'ok' });
-      db.saveHeartbeats(hbs);
-    }
 
     const { setTaskStatus } = require('./heartbeat');
     setTaskStatus(task.id, 'done');
