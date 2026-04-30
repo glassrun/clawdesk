@@ -80,10 +80,27 @@ export interface Dashboard {
   total_spent: number;
   agents: Agent[];
   projects: Project[];
+  recent_heartbeats?: Heartbeat[];
+}
+
+export interface SystemStats {
+  tasks: number;
+  projects: number;
+  agents: number;
+  heartbeats: number;
+  task_results: number;
+  audit_entries: number;
+  deleted_tasks: number;
+  db_size_bytes: number;
+  schema_version: number;
 }
 
 export async function getDashboard() {
   return api<Dashboard>('/api/dashboard');
+}
+
+export async function getSystemStats() {
+  return api<SystemStats>('/api/system/stats');
 }
 
 export async function getAgents() {
