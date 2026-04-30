@@ -470,9 +470,11 @@ async function triggerHeartbeat(agent, heartbeatBatch) {
   }
 }
 
+let heartbeatRunning = false;
 let heartbeatStats = { cycles: 0, totalMs: 0, agentsProcessed: 0, errors: 0, lastCycleMs: 0, last10Ms: [] };
 
 async function runHeartbeatCycle() {
+  heartbeatRunning = true;
   const cycleStart = Date.now();
   let results = [];
   const cycleHeartbeats = [];
@@ -566,6 +568,7 @@ async function runHeartbeatCycle() {
     broadcastSSE('heartbeat', { results, ts: Date.now() });
     return results;
   } finally {
+    heartbeatRunning = false;
     const elapsed = Date.now() - cycleStart;
     heartbeatStats.cycles++;
     heartbeatStats.totalMs += elapsed;

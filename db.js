@@ -51,6 +51,78 @@ db.exec(`
     title TEXT,
     description TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS agents (
+    id                   INTEGER PRIMARY KEY,
+    openclaw_agent_id    TEXT    NOT NULL,
+    name                 TEXT    NOT NULL,
+    status               TEXT    DEFAULT 'active',
+    budget_limit         REAL    DEFAULT 0,
+    budget_spent         REAL    DEFAULT 0,
+    heartbeat_enabled    INTEGER DEFAULT 1,
+    heartbeat_interval   INTEGER DEFAULT 60,
+    last_heartbeat       TEXT,
+    tasks_done           INTEGER DEFAULT 0,
+    tasks_failed         INTEGER DEFAULT 0,
+    created_at           TEXT    NOT NULL,
+    model                TEXT    DEFAULT 'minimax/MiniMax-M2.7'
+  );
+
+  CREATE TABLE IF NOT EXISTS projects (
+    id              INTEGER PRIMARY KEY,
+    title           TEXT    NOT NULL,
+    description     TEXT    DEFAULT '',
+    workspace_path  TEXT,
+    status          TEXT    DEFAULT 'active',
+    task_total      INTEGER DEFAULT 0,
+    task_done       INTEGER DEFAULT 0,
+    completion_pct   REAL    DEFAULT 0,
+    created_at      TEXT    NOT NULL,
+    deleted_at      TEXT,
+    updated_at      TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS tasks (
+    id                  INTEGER PRIMARY KEY,
+    project_id          INTEGER,
+    assigned_agent_id   INTEGER,
+    title               TEXT    NOT NULL,
+    description         TEXT    DEFAULT '',
+    status              TEXT    DEFAULT 'pending',
+    priority            TEXT    DEFAULT 'medium',
+    dependency_id       INTEGER,
+    creates_agent       TEXT,
+    created_by_agent_id INTEGER,
+    created_at          TEXT    NOT NULL,
+    completed_at        TEXT,
+    run_count           INTEGER DEFAULT 0,
+    _retry_count        INTEGER DEFAULT 0,
+    _status_changed_at  TEXT,
+    deleted_at          TEXT,
+    updated_at          TEXT,
+    repeat              INTEGER DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS heartbeats (
+    id              INTEGER PRIMARY KEY,
+    agent_id        INTEGER,
+    agent_name      TEXT    DEFAULT '',
+    openclaw_agent_id TEXT DEFAULT '',
+    triggered_at    TEXT    NOT NULL,
+    action_taken    TEXT    DEFAULT '',
+    status          TEXT    DEFAULT 'ok'
+  );
+
+  CREATE TABLE IF NOT EXISTS task_results (
+    id            INTEGER PRIMARY KEY,
+    task_id       INTEGER,
+    agent_id      INTEGER,
+    input         TEXT    DEFAULT '',
+    output        TEXT    DEFAULT '',
+    duration_ms   INTEGER DEFAULT 0,
+    executed_at   TEXT,
+    created_agent TEXT    DEFAULT ''
+  );
 `);
 
 function getVersion() {
@@ -66,14 +138,19 @@ function runMigrations() {
     // v1: initial schema (already applied if _changelog has records)
     // v2: add deleted_at + FTS5
     () => {
-      db.exec(`ALTER TABLE tasks  ADD COLUMN deleted_at TEXT`);
-      db.exec(`ALTER TABLE projects ADD COLUMN deleted_at TEXT`);
-      db.exec(`ALTER TABLE tasks  ADD COLUMN updated_at TEXT`);
-      db.exec(`ALTER TABLE projects ADD COLUMN updated_at TEXT`);
+      const addCol = (table, col, type) => {
+        try {
+          const existing = db.prepare(`PRAGMA table_info(${table})`).all().map(r => r.name);
+          if (!existing.includes(col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
+        } catch (e) { /* table may not exist yet in fresh db */ }
+      };
+      addCol('tasks', 'deleted_at', 'TEXT');
+      addCol('projects', 'deleted_at', 'TEXT');
+      addCol('tasks', 'updated_at', 'TEXT');
+      addCol('projects', 'updated_at', 'TEXT');
       db.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_priority   ON tasks(priority)`);
       db.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_created    ON tasks(created_at)`);
       db.exec(`CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status)`);
-      // Rebuild FTS after schema change - with error handling
       try { rebuildFts(); } catch (e) { console.error('[DB] FTS rebuild failed:', e.message); }
     },
   ];
