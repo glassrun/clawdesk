@@ -76,15 +76,11 @@ function createOpenClawAgent(agentId, name, workspace, opts = {}) {
 
 function deleteOpenClawAgent(agentId) {
   const { spawnSync } = require('child_process');
-  const cmd = `${OPENCLAW_CLI} agents delete "${agentId}" --force --json`;
-  const result = spawnSync('sh', ['-c', cmd], {
-    shell: true,
-    stdio: ['ignore', 'pipe', 'pipe']
-  });
+  const result = spawnSync(OPENCLAW_CLI, ['agents', 'delete', agentId, '--force', '--json']);
   const stdout = result.stdout?.toString() || '';
   const stderr = result.stderr?.toString() || '';
-  const notFound = stderr.includes('not found') || stdout.includes('not found') || stdout.includes('cannot be deleted');
-  if (result.status === 0 || notFound) return;
+  if (result.status === 0) return;
+  if (stderr.includes('not found') || stdout.includes('not found')) return;
   throw new Error(`Delete failed (exit ${result.status}): ${stderr || stdout}`.substring(0, 300));
 }
 
