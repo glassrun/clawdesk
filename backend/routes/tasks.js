@@ -115,27 +115,66 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     const taskId = +req.params.id;
     const t = tasks.find(x => x.id === taskId);
     if (!t) return res.status(404).json({ error: 'not found' });
-    const { assigned_agent_id, title, description, status, dependency_id, creates_agent, created_by_agent_id, priority, repeat } = req.body;
-    const resolveAgent = (v) => (v === '' || v === null || v === undefined) ? null : (typeof v === 'string' ? v : +v || null);
-    const resolveDep = (v) => (v === '' || v === null || v === undefined) ? null : +v || null;
-    if (priority && !['low', 'medium', 'high'].includes(priority)) return res.status(400).json({ error: 'priority must be low, medium, or high' });
-    const newDepId = dependency_id !== undefined ? resolveDep(dependency_id) : t.dependency_id;
+    const { assigned_agent_id, title, description, status, dependency_id, dependency_ids, creates_agent, created_by_agent_id, priority, repeat } = req.body;
+    const resolveDepId = (v) => {
+      if (v === '' || v === null || v === undefined) return null;
+      if (typeof v === 'string') v = v.trim();
+      return +v || null;
+    };
+    const resolveDepIds = (v) => {
+      if (v === '' || v === null || v === undefined) return null;
+      if (Array.isArray(v)) return v.map(x => +x).filter(x => x);
+      if (typeof v === 'string') return JSON.parse(v);
+      return null;
+    };
+    const newDepId = dependency_id !== undefined ? resolveDepId(dependency_id) : t.dependency_id;
+    const newDepIds = dependency_ids !== undefined ? resolveDepIds(dependency_ids) : (t.dependency_ids ? JSON.parse(t.dependency_ids) : null);
     if (newDepId && newDepId !== t.dependency_id) {
       const allTasks = db.loadTasks();
       const dep = allTasks.find(d => d.id === newDepId);
       if (!dep) return res.status(400).json({ error: `dependency task #${newDepId} not found` });
       if (dep.project_id !== t.project_id) return res.status(400).json({ error: `dependency task #${newDepId} belongs to a different project` });
-      const visited = new Set();
-      let current = newDepId;
-      while (current && !visited.has(current)) {
-        if (current === t.id) return res.status(400).json({ error: 'circular dependency detected' });
-        visited.add(current);
-        const parent = allTasks.find(d => d.id === current);
-        current = parent?.dependency_id;
+    }
+    if (newDepIds) {
+      const allTasks = db.loadTasks();
+      for (const did of newDepIds) {
+        const dep = allTasks.find(d => d.id === did);
+        if (!dep) return res.status(400).json({ error: `dependency task #${did} not found` });
+        if (dep.project_id !== t.project_id) return res.status(400).json({ error: `dependency task #${did} belongs to a different project` });
       }
+      // Circular dependency check across all deps
+      const visited = new Set();
+      const checkCircular = (id) => {
+        while (id && !visited.has(id)) {
+          if (id === t.id) return true;
+          visited.add(id);
+          const parent = allTasks.find(d => d.id === id);
+          if (!parent) break;
+          id = parent.dependency_id;
+          if (parent.dependency_ids) {
+            try {
+              const multi = JSON.parse(parent.dependency_ids);
+              for (const mid of multi) { if (checkCircular(mid)) return true; }
+            } catch {}
+          }
+        }
+        return false;
+      };
+      for (const did of newDepIds) { if (checkCircular(did)) return res.status(400).json({ error: 'circular dependency detected' }); }
     }
     const oldStatus = t.status;
-    Object.assign(t, { assigned_agent_id: assigned_agent_id !== undefined ? resolveAgent(assigned_agent_id) : t.assigned_agent_id, title: title ?? t.title, description: description ?? t.description, status: status ?? t.status, dependency_id: dependency_id !== undefined ? resolveDep(dependency_id) : t.dependency_id, creates_agent: creates_agent !== undefined ? creates_agent : t.creates_agent, created_by_agent_id: created_by_agent_id !== undefined ? created_by_agent_id : t.created_by_agent_id, priority: priority ?? t.priority, repeat: repeat !== undefined ? repeat : t.repeat });
+    Object.assign(t, {
+      assigned_agent_id: assigned_agent_id !== undefined ? resolveAgent(assigned_agent_id) : t.assigned_agent_id,
+      title: title ?? t.title,
+      description: description ?? t.description,
+      status: status ?? t.status,
+      dependency_id: dependency_id !== undefined ? resolveDepId(dependency_id) : t.dependency_id,
+      dependency_ids: dependency_ids !== undefined ? (newDepIds ? JSON.stringify(newDepIds) : null) : t.dependency_ids,
+      creates_agent: creates_agent !== undefined ? creates_agent : t.creates_agent,
+      created_by_agent_id: created_by_agent_id !== undefined ? created_by_agent_id : t.created_by_agent_id,
+      priority: priority ?? t.priority,
+      repeat: repeat !== undefined ? repeat : t.repeat
+    });
     if (status && status !== oldStatus) {
       t._status_changed_at = new Date().toISOString();
       if (status === 'done') { if (!t.completed_at) t.completed_at = new Date().toISOString(); }
@@ -185,16 +224,31 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
       try { const a = JSON.parse(h.action_taken); return a.task_id === task.id || (a.title && a.title === task.title); } catch { return false; }
     }).sort((a, b) => b.id - a.id);
     const chain = [];
-    let current = task.dependency_id;
     const visited = new Set();
-    while (current && !visited.has(current)) {
-      visited.add(current);
-      const dep = allTasks.find(t => t.id === current);
-      if (!dep) { chain.push({ id: current, title: '[deleted]' }); break; }
-      chain.push({ id: dep.id, title: dep.title, status: dep.status });
-      current = dep.dependency_id;
-    }
-    const dependents = allTasks.filter(t => t.dependency_id === task.id).map(t => ({ id: t.id, title: t.title, status: t.status }));
+    const collectChain = (depId) => {
+      let current = depId;
+      while (current && !visited.has(current)) {
+        visited.add(current);
+        const dep = allTasks.find(t => t.id === current);
+        if (!dep) { chain.push({ id: current, title: '[deleted]' }); return; }
+        chain.push({ id: dep.id, title: dep.title, status: dep.status });
+        current = dep.dependency_id;
+        if (dep.dependency_ids) {
+          try {
+            const multi = JSON.parse(dep.dependency_ids);
+            for (const mid of multi) collectChain(mid);
+          } catch {}
+        }
+      }
+    };
+    collectChain(task.dependency_id);
+    const dependents = allTasks.filter(t => {
+      if (t.dependency_id === task.id) return true;
+      if (t.dependency_ids) {
+        try { return JSON.parse(t.dependency_ids).includes(task.id); } catch {}
+      }
+      return false;
+    }).map(t => ({ id: t.id, title: t.title, status: t.status }));
     res.json({
       task: { id: task.id, title: task.title, status: task.status, priority: task.priority, assigned_agent_id: task.assigned_agent_id, created_at: task.created_at, completed_at: task.completed_at, retry_count: task._retry_count || 0 },
       executions: results.filter(r => r.type !== 'note').map(r => ({ id: r.id, status: r.output?.startsWith('Error:') ? 'failed' : 'completed', duration_ms: r.duration_ms, executed_at: r.executed_at, output_preview: (r.output || '').substring(0, 200) })),
@@ -214,14 +268,23 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     if (!task) return res.status(404).json({ error: 'not found' });
     const chain = [];
     const visited = new Set();
-    let current = task.dependency_id;
-    while (current && !visited.has(current)) {
-      visited.add(current);
-      const dep = tasks.find(t => t.id === current);
-      if (!dep) { chain.push({ id: current, title: '[deleted]', status: 'missing' }); break; }
-      chain.push({ id: dep.id, title: dep.title, status: dep.status, priority: dep.priority });
-      current = dep.dependency_id;
-    }
+    const collectChain = (depId) => {
+      let current = depId;
+      while (current && !visited.has(current)) {
+        visited.add(current);
+        const dep = tasks.find(t => t.id === current);
+        if (!dep) { chain.push({ id: current, title: '[deleted]', status: 'missing' }); return; }
+        chain.push({ id: dep.id, title: dep.title, status: dep.status, priority: dep.priority });
+        current = dep.dependency_id;
+        if (dep.dependency_ids) {
+          try {
+            const multi = JSON.parse(dep.dependency_ids);
+            for (const mid of multi) collectChain(mid);
+          } catch {}
+        }
+      }
+    };
+    collectChain(task.dependency_id);
     res.json({ task_id: task.id, title: task.title, status: task.status, chain_length: chain.length, chain, blocked: chain.some(c => c.status !== 'done') });
   });
 
@@ -229,8 +292,14 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     const task = db.loadTasks().find(x => x.id === +req.params.id);
     if (!task) return res.status(404).json({ error: 'not found' });
     const agents = db.loadAgents();
-    const dependents = db.loadTasks().filter(t => t.dependency_id === task.id).map(t => {
-      const a = agents.find(x => x.id === t.assigned_agent_id);
+    const dependents = db.loadTasks().filter(t => {
+      if (t.dependency_id === task.id) return true;
+      if (t.dependency_ids) {
+        try { return JSON.parse(t.dependency_ids).includes(task.id); } catch {}
+      }
+      return false;
+    }).map(t => {
+      const a = db.loadAgents().find(x => x.id === t.assigned_agent_id);
       return { id: t.id, title: t.title, status: t.status, priority: t.priority, agent_name: a?.name };
     });
     res.json({ task_id: task.id, task_title: task.title, blocked_by_this: dependents, count: dependents.length });
@@ -250,6 +319,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
       title: req.body.title || (orig.title + ' (copy)'),
       description: orig.description, status: 'pending',
       dependency_id: orig.dependency_id,
+      dependency_ids: orig.dependency_ids,
       creates_agent: orig.creates_agent,
       created_by_agent_id: orig.created_by_agent_id,
       priority: orig.priority,

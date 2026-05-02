@@ -60,9 +60,15 @@ export default function AgentsPage() {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      await syncAgents();
-    } catch (e) { console.error(e); }
-    finally { setSyncing(false); loadData(); }
+      const result = await syncAgents();
+      console.log('[Sync] result:', result);
+    } catch (e) { console.error('[Sync]', e); }
+    try {
+      const data = await getAgents();
+      console.log('[LoadData] got', data.length, 'agents');
+      setAgents(data);
+    } catch (e) { console.error('[LoadData]', e); }
+    setSyncing(false);
   };
 
   const handleDelete = async (id: number) => {

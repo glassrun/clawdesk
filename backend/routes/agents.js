@@ -103,14 +103,14 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
       return res.status(400).json({ error: 'agent has active pending tasks', pending_tasks: agentTasks.length, hint: 'add ?force=1 to delete anyway' });
     }
     if (req.query.force === '1') {
-      db.remove('agents', { id: agent.id });
-      db.remove('tasks', { assigned_agent_id: agent.id });
+      db.hardDelete('agents', { id: agent.id });
+      db.hardDelete('tasks', { assigned_agent_id: agent.id });
     } else {
       const { deleteOpenClawAgent } = require('../services/executor');
       try {
         await deleteOpenClawAgent(agent.openclaw_agent_id);
-        db.remove('agents', { id: agent.id });
-        db.remove('tasks', { assigned_agent_id: agent.id });
+        db.hardDelete('agents', { id: agent.id });
+        db.hardDelete('tasks', { assigned_agent_id: agent.id });
       } catch (e) { return res.status(500).json({ error: e.message }); }
     }
     res.json({ ok: true, soft_deleted: true });

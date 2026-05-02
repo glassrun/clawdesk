@@ -2,7 +2,14 @@ const path = require('path');
 const fs = require('fs');
 const { exec } = require('child_process');
 const { nextId } = require('../db');
-const OPENCLAW_CLI = process.env.OPENCLAW_CLI || '/home/openclaw/.npm-global/bin/openclaw';
+const OPENCLAW_CLI = (() => {
+  const val = process.env.OPENCLAW_CLI;
+  // If set to "1" or other obvious junk (from systemd/gateway env bleed), ignore it
+  if (!val || val === '1' || !val.trim()) return 'openclaw';
+  // Accept if it looks like a path or starts with "openclaw"
+  if (val.includes('/') || val.startsWith('openclaw')) return val.trim();
+  return 'openclaw';
+})();
 const OPENCLAW_NODE = process.env.OPENCLAW_NODE || '/usr/bin/node';
 const OPENCLAW_MODULE = process.env.OPENCLAW_MODULE || '/home/openclaw/.npm-global/lib/node_modules/openclaw/openclaw.mjs';
 const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3777}`;
@@ -14,9 +21,7 @@ module.exports = { runOpenClawAgent, createOpenClawAgent, deleteOpenClawAgent, e
 
 function runOpenClawAgent(agentId, message, timeout = 600000, cwd) {
   return new Promise((resolve, reject) => {
-    const args = ['agent', '--agent', agentId, '--message', message, '--json', '--timeout', String(Math.floor((timeout || 600000) / 1000))];
-    const { spawn } = require('child_process');
-    const child = spawn(OPENCLAW_NODE, [OPENCLAW_MODULE, ...args]);
+    const child = spawn(OPENCLAW_CLI, ['agent', '--agent', agentId, '--message', message, '--json', '--timeout', String(Math.floor((timeout || 600000) / 1000))], { cwd });
     let stdout = '', stderr = '';
     child.stdout.on('data', d => stdout += d);
     child.stderr.on('data', d => stderr += d);
@@ -38,32 +43,51 @@ function runOpenClawAgent(agentId, message, timeout = 600000, cwd) {
 function createOpenClawAgent(agentId, name, workspace, opts = {}) {
   return new Promise((resolve, reject) => {
     const wsDir = workspace || path.join(process.env.HOME, `.openclaw/workspace-${agentId}`);
-    fs.mkdirSync(wsDir, { recursive: true });
+    const TIMEOUT_MS = 300000;
 
+    // Use spawnSync with shell:true + inherit — only pattern that works with the CLI's
+    // gateway RPC (other stdio modes cause it to exit with code 1)
+    const { spawnSync } = require('child_process');
+    const cmd = `${OPENCLAW_CLI} agents add "${agentId}" --non-interactive --workspace "${wsDir}" --json`;
+    const result = spawnSync(cmd, { shell: true, timeout: TIMEOUT_MS });
+    const output = (result.stdout || '').toString() + (result.stderr || '').toString();
+
+    // Only create workspace files and resolve if CLI succeeded
+    if (result.status !== 0 && !output.includes('already exists')) {
+      reject(new Error(`Failed: exit ${result.status}\n${output.substring(0, 500)}`));
+      return;
+    }
+
+    // CLI succeeded — create identity files
+    fs.mkdirSync(wsDir, { recursive: true });
     const emoji = opts.emoji || '🤖';
     const vibe = opts.vibe || 'helpful and focused';
     fs.writeFileSync(path.join(wsDir, 'IDENTITY.md'), `# IDENTITY.md\n\n- **Name:** ${name}\n- **Role:** ${vibe}\n- **Creature:** AI agent\n- **Vibe:** ${vibe.split('.').filter(s=>s.trim())[0].split(',').slice(0,2).map(s=>s.trim()).join(', ') || 'focused and effective'}\n- **Emoji:** ${emoji}\n`);
     fs.writeFileSync(path.join(wsDir, 'SOUL.md'), `# SOUL.md\n\nYou are ${name}. ${vibe}. Be resourceful, direct, and actually do the work - don't just say you did.\n`);
     fs.writeFileSync(path.join(wsDir, 'USER.md'), `# USER.md\n\nS is your operator. Listen carefully. Execute precisely. No filler.\n`);
 
-    const cmd = `${OPENCLAW_CLI} agents add "${agentId}" --non-interactive --workspace "${wsDir}" --json`;
-    exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
-      const output = (stdout || '') + (stderr || '');
-      if (err && !output.includes('already exists')) return reject(new Error(`Failed: ${err.message}\n${output.substring(0, 500)}`));
-      const identityCmd = `${OPENCLAW_CLI} agents set-identity --agent "${agentId}" --name "${name.replace(/"/g, '\\"')}" --json`;
-      exec(identityCmd, { timeout: 15000 }, () => resolve({ agentId, workspace: wsDir, output: output.substring(0, 500) }));
-    });
+    // set-identity — same pattern
+    const idCmd = `${OPENCLAW_CLI} agents set-identity --agent "${agentId}" --name "${name.replace(/"/g, '\\"')}" --json`;
+    const idResult = spawnSync(idCmd, { shell: true, timeout: 15000 });
+    if (idResult.status !== 0) console.log(`[createOpenClawAgent] set-identity: ${idResult.stderr.toString().substring(0, 200)}`);
+
+    resolve({ agentId, workspace: wsDir, output: output.substring(0, 500) });
   });
 }
 
 function deleteOpenClawAgent(agentId) {
-  return new Promise((resolve, reject) => {
-    const cmd = `${OPENCLAW_CLI} agents delete "${agentId}" --force --json`;
-    exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
-      if (err) return reject(new Error(`Failed to delete agent: ${err.message}`));
-      resolve();
-    });
+  const { spawnSync } = require('child_process');
+  const cmd = `${OPENCLAW_CLI} agents delete "${agentId}" --force --json`;
+  const result = spawnSync('sh', ['-c', cmd], { 
+    timeout: 8000,
+    shell: true,
+    stdio: ['ignore', 'pipe', 'pipe']
   });
+  const stdout = result.stdout?.toString() || '';
+  const stderr = result.stderr?.toString() || '';
+  const notFound = stderr.includes('not found') || stdout.includes('not found') || stdout.includes('cannot be deleted');
+  if (result.status === 0 || notFound) return;
+  throw new Error(`Delete failed (exit ${result.status}): ${stderr || stdout}`.substring(0, 300));
 }
 
 // ===================== TASK EXECUTION =====================

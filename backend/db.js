@@ -27,7 +27,7 @@ process.on('uncaughtException', (err) => {
 
 // ===================== Schema version / Migrations =====================
 
-const CURRENT_VERSION = 2;
+const CURRENT_VERSION = 3;
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS _changelog (
@@ -91,6 +91,7 @@ db.exec(`
     status              TEXT    DEFAULT 'pending',
     priority            TEXT    DEFAULT 'medium',
     dependency_id       INTEGER,
+    dependency_ids      TEXT,
     creates_agent       TEXT,
     created_by_agent_id INTEGER,
     created_at          TEXT    NOT NULL,
@@ -136,22 +137,19 @@ function runMigrations() {
 
   const migrations = [
     // v1: initial schema (already applied if _changelog has records)
-    // v2: add deleted_at + FTS5
+    // v3: add dependency_ids (multi-dependency support)
     () => {
       const addCol = (table, col, type) => {
         try {
           const existing = db.prepare(`PRAGMA table_info(${table})`).all().map(r => r.name);
           if (!existing.includes(col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
-        } catch (e) { /* table may not exist yet in fresh db */ }
+        } catch (e) {}
       };
-      addCol('tasks', 'deleted_at', 'TEXT');
-      addCol('projects', 'deleted_at', 'TEXT');
-      addCol('tasks', 'updated_at', 'TEXT');
-      addCol('projects', 'updated_at', 'TEXT');
-      db.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_priority   ON tasks(priority)`);
-      db.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_created    ON tasks(created_at)`);
-      db.exec(`CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status)`);
-      try { rebuildFts(); } catch (e) { console.error('[DB] FTS rebuild failed:', e.message); }
+      addCol('tasks', 'dependency_ids', 'TEXT');
+      // Migrate existing single-dependency data
+      const tasks = db.prepare("SELECT id, dependency_id FROM tasks WHERE dependency_id IS NOT NULL AND deleted_at IS NULL").all();
+      const upd = db.prepare("UPDATE tasks SET dependency_ids = ? WHERE id = ?");
+      for (const t of tasks) upd.run(JSON.stringify([t.dependency_id]), t.id);
     },
   ];
 
@@ -257,6 +255,13 @@ function saveAgents(data) {
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
   for (const a of data) ins.run(a.id,a.openclaw_agent_id,a.name,a.status,a.budget_limit,a.budget_spent,a.heartbeat_enabled,a.heartbeat_interval,a.last_heartbeat,a.tasks_done,a.tasks_failed,a.created_at);
 }
+function saveAgentsIdempotent(data) {
+  // Upsert: INSERT OR REPLACE preserves existing rows on id conflict, adds new rows otherwise
+  db.exec("DELETE FROM agents");
+  const ins = db.prepare(`INSERT OR REPLACE INTO agents (id,openclaw_agent_id,name,status,budget_limit,budget_spent,heartbeat_enabled,heartbeat_interval,last_heartbeat,tasks_done,tasks_failed,created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
+  for (const a of data) ins.run(a.id,a.openclaw_agent_id,a.name,a.status,a.budget_limit,a.budget_spent,a.heartbeat_enabled,a.heartbeat_interval,a.last_heartbeat,a.tasks_done,a.tasks_failed,a.created_at);
+}
 function insertAgent(a) {
   const id = nextId('agents');
   db.prepare(`INSERT INTO agents (id,openclaw_agent_id,name,status,budget_limit,budget_spent,heartbeat_enabled,heartbeat_interval,last_heartbeat,tasks_done,tasks_failed,created_at)
@@ -290,17 +295,20 @@ function insertProject(p) {
 function loadTasks()    { return db.prepare("SELECT * FROM tasks WHERE deleted_at IS NULL").all(); }
 function saveTasks(data) {
   db.exec("DELETE FROM tasks");
-  const ins = db.prepare(`INSERT INTO tasks (id,project_id,assigned_agent_id,title,description,status,priority,dependency_id,creates_agent,created_by_agent_id,created_at,completed_at,run_count,retry_count,_status_changed_at,deleted_at,updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
-  for (const t of data) ins.run(t.id,t.project_id,t.assigned_agent_id||null,t.title,t.description,t.status,t.priority,t.dependency_id||null,t.creates_agent||null,t.created_by_agent_id||null,t.created_at,t.completed_at||null,t.run_count||0,t.retry_count||0,t._status_changed_at||null,t.deleted_at||null,t.updated_at||null);
+  const ins = db.prepare(`INSERT INTO tasks (id,project_id,assigned_agent_id,title,description,status,priority,dependency_id,dependency_ids,creates_agent,created_by_agent_id,created_at,completed_at,run_count,_retry_count,_status_changed_at,deleted_at,updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+  for (const t of data) ins.run(t.id,t.project_id,t.assigned_agent_id||null,t.title,t.description,t.status,t.priority,t.dependency_id||null,Array.isArray(t.dependency_ids)?JSON.stringify(t.dependency_ids):(t.dependency_ids||null),t.creates_agent||null,t.created_by_agent_id||null,t.created_at,t.completed_at||null,t.run_count||0,t._retry_count||0,t._status_changed_at||null,t.deleted_at||null,t.updated_at||null);
 }
 function insertTask(t) {
   const id = nextId('tasks');
   const now = new Date().toISOString();
-  db.prepare(`INSERT INTO tasks (id,project_id,assigned_agent_id,title,description,status,priority,dependency_id,creates_agent,created_by_agent_id,created_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+  const depIds = t.dependency_ids
+    ? (Array.isArray(t.dependency_ids) ? JSON.stringify(t.dependency_ids) : t.dependency_ids)
+    : null;
+  db.prepare(`INSERT INTO tasks (id,project_id,assigned_agent_id,title,description,status,priority,dependency_id,dependency_ids,creates_agent,created_by_agent_id,created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(id, t.project_id, t.assigned_agent_id||null, t.title, t.description||'',
-         t.status||'pending', t.priority||'medium', t.dependency_id||null,
+         t.status||'pending', t.priority||'medium', t.dependency_id||null, depIds,
          t.creates_agent||null, t.created_by_agent_id||null, now);
   return id;
 }
@@ -310,10 +318,13 @@ function insertTaskBatch(batch) {
   const now = new Date().toISOString();
   for (const t of batch) {
     const id = nextId('tasks');
-    db.prepare(`INSERT INTO tasks (id,project_id,assigned_agent_id,title,description,status,priority,dependency_id,creates_agent,created_by_agent_id,created_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+    const depIds = t.dependency_ids
+      ? (Array.isArray(t.dependency_ids) ? JSON.stringify(t.dependency_ids) : t.dependency_ids)
+      : null;
+    db.prepare(`INSERT INTO tasks (id,project_id,assigned_agent_id,title,description,status,priority,dependency_id,dependency_ids,creates_agent,created_by_agent_id,created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(id, t.project_id, t.assigned_agent_id||null, t.title, t.description||'',
-           t.status||'pending', t.priority||'medium', t.dependency_id||null,
+           t.status||'pending', t.priority||'medium', t.dependency_id||null, depIds,
            t.creates_agent||null, t.created_by_agent_id||null, now);
     results.push(id);
   }
@@ -410,6 +421,7 @@ module.exports = {
   audit,
   loadAgents,
   saveAgents,
+  saveAgentsIdempotent,
   insertAgent,
   loadProjects,
   saveProjects,

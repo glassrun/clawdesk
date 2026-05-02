@@ -126,33 +126,54 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
 
   router.post('/:id/tasks', (req, res) => {
     if (!db.loadProjects().find(p => p.id === +req.params.id)) return res.status(404).json({ error: 'project not found' });
-    const { assigned_agent_id, title, description, status, dependency_id, creates_agent, created_by_agent_id, priority, repeat } = req.body;
+    const { assigned_agent_id, title, description, status, dependency_id, dependency_ids, creates_agent, created_by_agent_id, priority, repeat } = req.body;
     if (!title) return res.status(400).json({ error: 'title required' });
     if (title.length > 500) return res.status(400).json({ error: 'title too long (max 500 chars)' });
     if (priority && !['low', 'medium', 'high'].includes(priority)) return res.status(400).json({ error: 'priority must be low, medium, or high' });
     const toNum = (v) => (v === '' || v === null || v === undefined) ? null : +v || null;
+    const toNumArr = (v) => {
+      if (!v) return null;
+      if (Array.isArray(v)) return v.map(x => +x).filter(x => x);
+      if (typeof v === 'string') return JSON.parse(v);
+      return null;
+    };
     const assignId = toNum(assigned_agent_id);
     if (assignId) {
       const allAgents = db.loadAgents();
       if (!allAgents.find(a => a.id === assignId)) return res.status(400).json({ error: `agent #${assignId} not found` });
     }
     const depId = toNum(dependency_id);
+    const depIds = toNumArr(dependency_ids);
     if (depId) {
       const allTasks = db.loadTasks();
       const dep = allTasks.find(t => t.id === depId);
       if (!dep) return res.status(400).json({ error: `dependency task #${depId} not found` });
       if (dep.project_id !== +req.params.id) return res.status(400).json({ error: `dependency task #${depId} belongs to a different project` });
-      const visited = new Set();
-      let current = depId;
-      while (current && !visited.has(current)) {
-        visited.add(current);
-        const parent = allTasks.find(t => t.id === current);
-        current = parent?.dependency_id;
+    }
+    if (depIds) {
+      const allTasks = db.loadTasks();
+      for (const id of depIds) {
+        const dep = allTasks.find(t => t.id === id);
+        if (!dep) return res.status(400).json({ error: `dependency task #${id} not found` });
+        if (dep.project_id !== +req.params.id) return res.status(400).json({ error: `dependency task #${id} belongs to a different project` });
       }
-      if (current) return res.status(400).json({ error: `circular dependency detected: task #${depId} is part of a cycle` });
     }
     const tasks = db.loadTasks();
-    const t = { id: nextId('tasks'), project_id: +req.params.id, assigned_agent_id: toNum(assigned_agent_id), title, description: description || '', status: status || 'pending', dependency_id: depId, creates_agent: creates_agent || null, created_by_agent_id: toNum(created_by_agent_id), priority: priority || 'medium', created_at: new Date().toISOString(), completed_at: null };
+    const t = {
+      id: nextId('tasks'),
+      project_id: +req.params.id,
+      assigned_agent_id: toNum(assigned_agent_id),
+      title,
+      description: description || '',
+      status: status || 'pending',
+      dependency_id: depId,
+      dependency_ids: depIds ? JSON.stringify(depIds) : null,
+      creates_agent: creates_agent || null,
+      created_by_agent_id: toNum(created_by_agent_id),
+      priority: priority || 'medium',
+      created_at: new Date().toISOString(),
+      completed_at: null
+    };
     tasks.push(t);
     db.saveTasks(tasks);
     const agents = db.loadAgents();

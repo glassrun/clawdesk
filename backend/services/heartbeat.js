@@ -64,7 +64,26 @@ function setTaskStatus(taskId, newStatus) {
 
 async function triggerHeartbeat(agent, heartbeatBatch) {
   const tasks = db.loadTasks();
-  const pending = tasks.filter(t => t.assigned_agent_id === agent.id && t.status === 'pending' && (!t.dependency_id || tasks.find(d => d.id === t.dependency_id)?.status === 'done')).sort((a, b) => {
+function isTaskSatisfied(task, tasks) {
+  if (!task.dependency_id && !task.dependency_ids) return true;
+  const done = (t) => t.status === 'done';
+  if (task.dependency_id) {
+    const dep = tasks.find(d => d.id === task.dependency_id);
+    if (!dep || !done(dep)) return false;
+  }
+  if (task.dependency_ids) {
+    try {
+      const ids = JSON.parse(task.dependency_ids);
+      for (const id of ids) {
+        const dep = tasks.find(d => d.id === id);
+        if (!dep || !done(dep)) return false;
+      }
+    } catch { return false; }
+  }
+  return true;
+}
+
+  const pending = tasks.filter(t => t.assigned_agent_id === agent.id && t.status === 'pending' && isTaskSatisfied(t, tasks)).sort((a, b) => {
     const pri = { high: 0, medium: 1, low: 2 };
     const pa = pri[a.priority] ?? 1, pb = pri[b.priority] ?? 1;
     return pa !== pb ? pa - pb : a.id - b.id;

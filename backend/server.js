@@ -41,7 +41,12 @@ async function withRetry(fn, opts = {}) {
 const app = express();
 const PORT = process.env.PORT || 3777;
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
-const OPENCLAW_CLI = process.env.OPENCLAW_CLI || '/home/openclaw/.npm-global/bin/openclaw';
+const OPENCLAW_CLI = (() => {
+  const val = process.env.OPENCLAW_CLI;
+  // Use if set to a non-empty, non-numeric value that looks like a path/command
+  if (val && val.trim() && !/^\d+$/.test(val) && (val.includes('/') || val.startsWith('openclaw'))) return val.trim();
+  return 'openclaw';
+})();
 const DATA_DIR = path.join(__dirname, 'data');
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -83,22 +88,32 @@ const ctx = { db, broadcastSSE, broadcastTaskUpdate, nextId };
 
 // ===================== SYNC FROM OPENCLAW =====================
 
+let syncInProgress = false;
+
 function syncFromOpenClaw() {
-  const CLI = 'node /home/openclaw/.npm-global/lib/node_modules/openclaw/openclaw.mjs';
+  if (syncInProgress) {
+    return Promise.resolve({ synced: [], added: 0, updated: 0, removed: 0, source: 'cli', skipped: true });
+  }
+  syncInProgress = true;
+  const CLI = OPENCLAW_CLI;
   const TIMEOUT_MS = 300000;
   return new Promise((resolve, reject) => {
-    const { exec } = require('child_process');
     let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; cp.kill(); }, TIMEOUT_MS);
+    const timer = setTimeout(() => { timedOut = true; try { cp.kill(); } catch(e){} }, TIMEOUT_MS);
+    const { exec } = require('child_process');
     const cp = exec(`${CLI} agents list --json`, { timeout: TIMEOUT_MS }, (err, stdout, stderr) => {
       clearTimeout(timer);
-      if (timedOut) { reject(new Error('CLI timed out after 120s')); return; }
-      if (err) { reject(new Error(`CLI error: ${err.message}`)); return; }
+      if (timedOut) { syncInProgress = false; reject(new Error(`CLI timed out after ${TIMEOUT_MS/1000}s`)); return; }
+      if (err) { syncInProgress = false; reject(new Error(`CLI error: ${err.message}`)); return; }
       try {
         const cliAgents = JSON.parse(stdout);
+        console.log(`[Sync] CLI returned ${cliAgents.length} agents: ${cliAgents.map(a=>a.id).join(', ')}`);
         const agents = db.loadAgents();
+        console.log(`[Sync] DB had ${agents.length} agents before merge`);
         const existingMap = new Map(agents.map(a => [a.openclaw_agent_id, a]));
         let added = 0, updated = 0;
+        // Pre-compute next new IDs before any DELETE to avoid nextId() returning same value for all new agents
+        let nextNewId = nextId('agents');
         for (const ca of cliAgents) {
           const id = ca.id;
           if (existingMap.has(id)) {
@@ -107,16 +122,26 @@ function syncFromOpenClaw() {
             e.status = 'active';
             updated++;
           } else {
-            agents.push({ id: nextId('agents'), openclaw_agent_id: id, name: ca.identityName || ca.name || id, status: 'active', budget_limit: 0, budget_spent: 0, heartbeat_enabled: 1, heartbeat_interval: 60, last_heartbeat: null, tasks_done: 0, tasks_failed: 0, created_at: new Date().toISOString(), model: ca.model || 'minimax/MiniMax-M2.7' });
+            agents.push({ id: nextNewId++, openclaw_agent_id: id, name: ca.identityName || ca.name || id, status: 'active', budget_limit: 0, budget_spent: 0, heartbeat_enabled: 1, heartbeat_interval: 60, last_heartbeat: null, tasks_done: 0, tasks_failed: 0, created_at: new Date().toISOString(), model: ca.model || 'minimax/MiniMax-M2.7' });
             added++;
           }
         }
         const cliIds = new Set(cliAgents.map(ca => ca.id));
         const filtered = agents.filter(a => cliIds.has(a.openclaw_agent_id));
-        db.saveAgents(filtered);
+        console.log(`[Sync] Saving ${filtered.length} agents (added=${added}, updated=${updated})`);
+        try {
+          db.saveAgents(filtered);
+        } catch (saveErr) {
+          if (saveErr.message.includes('UNIQUE constraint failed')) {
+            console.log(`[Sync] UNIQUE constraint hit, retrying with INSERT OR REPLACE`);
+            db.saveAgentsIdempotent(filtered);
+          } else throw saveErr;
+        }
+        syncInProgress = false;
         resolve({ synced: filtered.map(a => a.openclaw_agent_id), added, updated, removed: 0, source: 'cli' });
-      } catch (e) { reject(new Error(`CLI parse error: ${e.message}`)); }
+      } catch (e) { syncInProgress = false; reject(new Error(`CLI parse error: ${e.message}`)); }
     });
+    cp.on('error', err => { clearTimeout(timer); syncInProgress = false; reject(new Error('exec error: ' + err.message)); });
   });
 }
 
