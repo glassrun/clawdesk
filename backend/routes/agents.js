@@ -102,18 +102,15 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     if (agentTasks.length > 0 && req.query.force !== '1') {
       return res.status(400).json({ error: 'agent has active pending tasks', pending_tasks: agentTasks.length, hint: 'add ?force=1 to delete anyway' });
     }
-    if (req.query.force === '1') {
-      db.hardDelete('agents', { id: agent.id });
-      db.hardDelete('tasks', { assigned_agent_id: agent.id });
-    } else {
-      const { deleteOpenClawAgent } = require('../services/executor');
-      try {
-        await deleteOpenClawAgent(agent.openclaw_agent_id);
-        db.hardDelete('agents', { id: agent.id });
-        db.hardDelete('tasks', { assigned_agent_id: agent.id });
-      } catch (e) { return res.status(500).json({ error: e.message }); }
+    const { deleteOpenClawAgent } = require('../services/executor');
+    try {
+      await deleteOpenClawAgent(agent.openclaw_agent_id);
+    } catch (e) {
+      return res.status(500).json({ error: 'CLI delete failed: ' + e.message });
     }
-    res.json({ ok: true, soft_deleted: true });
+    db.hardDelete('tasks', { assigned_agent_id: agent.id });
+    db.hardDelete('agents', { id: agent.id });
+    res.json({ ok: true, deleted: true });
   });
 
   router.post('/:id/heartbeat', async (req, res) => {
