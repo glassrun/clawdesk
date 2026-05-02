@@ -96,14 +96,9 @@ function syncFromOpenClaw() {
   }
   syncInProgress = true;
   const CLI = OPENCLAW_CLI;
-  const TIMEOUT_MS = 300000;
   return new Promise((resolve, reject) => {
-    let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; try { cp.kill(); } catch(e){} }, TIMEOUT_MS);
     const { exec } = require('child_process');
-    const cp = exec(`${CLI} agents list --json`, { timeout: TIMEOUT_MS }, (err, stdout, stderr) => {
-      clearTimeout(timer);
-      if (timedOut) { syncInProgress = false; reject(new Error(`CLI timed out after ${TIMEOUT_MS/1000}s`)); return; }
+    const cp = exec(`${CLI} agents list --json`, (err, stdout, stderr) => {
       if (err) { syncInProgress = false; reject(new Error(`CLI error: ${err.message}`)); return; }
       try {
         const cliAgents = JSON.parse(stdout);
@@ -141,7 +136,7 @@ function syncFromOpenClaw() {
         resolve({ synced: filtered.map(a => a.openclaw_agent_id), added, updated, removed: 0, source: 'cli' });
       } catch (e) { syncInProgress = false; reject(new Error(`CLI parse error: ${e.message}`)); }
     });
-    cp.on('error', err => { clearTimeout(timer); syncInProgress = false; reject(new Error('exec error: ' + err.message)); });
+    cp.on('error', err => { syncInProgress = false; reject(new Error('exec error: ' + err.message)); });
   });
 }
 

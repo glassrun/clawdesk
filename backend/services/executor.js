@@ -43,13 +43,12 @@ function runOpenClawAgent(agentId, message, timeout = 600000, cwd) {
 function createOpenClawAgent(agentId, name, workspace, opts = {}) {
   return new Promise((resolve, reject) => {
     const wsDir = workspace || path.join(process.env.HOME, `.openclaw/workspace-${agentId}`);
-    const TIMEOUT_MS = 300000;
 
     // Use spawnSync with shell:true + inherit — only pattern that works with the CLI's
     // gateway RPC (other stdio modes cause it to exit with code 1)
     const { spawnSync } = require('child_process');
     const cmd = `${OPENCLAW_CLI} agents add "${agentId}" --non-interactive --workspace "${wsDir}" --json`;
-    const result = spawnSync(cmd, { shell: true, timeout: TIMEOUT_MS });
+    const result = spawnSync(cmd, { shell: true });
     const output = (result.stdout || '').toString() + (result.stderr || '').toString();
 
     // Only create workspace files and resolve if CLI succeeded
@@ -68,7 +67,7 @@ function createOpenClawAgent(agentId, name, workspace, opts = {}) {
 
     // set-identity — same pattern
     const idCmd = `${OPENCLAW_CLI} agents set-identity --agent "${agentId}" --name "${name.replace(/"/g, '\\"')}" --json`;
-    const idResult = spawnSync(idCmd, { shell: true, timeout: 15000 });
+    const idResult = spawnSync(idCmd, { shell: true });
     if (idResult.status !== 0) console.log(`[createOpenClawAgent] set-identity: ${idResult.stderr.toString().substring(0, 200)}`);
 
     resolve({ agentId, workspace: wsDir, output: output.substring(0, 500) });
