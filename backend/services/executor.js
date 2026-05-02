@@ -78,8 +78,7 @@ function createOpenClawAgent(agentId, name, workspace, opts = {}) {
 function deleteOpenClawAgent(agentId) {
   const { spawnSync } = require('child_process');
   const cmd = `${OPENCLAW_CLI} agents delete "${agentId}" --force --json`;
-  const result = spawnSync('sh', ['-c', cmd], { 
-    timeout: 8000,
+  const result = spawnSync('sh', ['-c', cmd], {
     shell: true,
     stdio: ['ignore', 'pipe', 'pipe']
   });
