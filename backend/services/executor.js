@@ -19,9 +19,9 @@ module.exports = { runOpenClawAgent, createOpenClawAgent, deleteOpenClawAgent, e
 
 // ===================== OPENCLAW AGENT CLI WRAPPERS =====================
 
-function runOpenClawAgent(agentId, message, timeout = 600000, cwd) {
+function runOpenClawAgent(agentId, message, cwd) {
   return new Promise((resolve, reject) => {
-    const child = spawn(OPENCLAW_CLI, ['agent', '--agent', agentId, '--message', message, '--json', '--timeout', String(Math.floor((timeout || 600000) / 1000))], { cwd });
+    const child = spawn(OPENCLAW_CLI, ['agent', '--agent', agentId, '--message', message, '--json'], { cwd });
     let stdout = '', stderr = '';
     child.stdout.on('data', d => stdout += d);
     child.stderr.on('data', d => stderr += d);
@@ -170,7 +170,7 @@ async function executeTask(agent, task) {
 
   const startTime = Date.now();
   try {
-    const result = await runOpenClawAgent(agent.openclaw_agent_id, message, 600000, undefined);
+    const result = await runOpenClawAgent(agent.openclaw_agent_id, message, undefined);
     const durationMs = Date.now() - startTime;
     const output = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
 
