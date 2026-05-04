@@ -60,6 +60,7 @@ export default function TasksPage() {
   const [formPriority, setFormPriority] = useState("medium");
   const [formAgent, setFormAgent] = useState("");
   const [formProject, setFormProject] = useState(0);
+  const [formDepIds, setFormDepIds] = useState<number[]>([]);
 
   const buildParams = useCallback(() => {
     const params: any = { page, limit: 30 };
@@ -160,6 +161,7 @@ export default function TasksPage() {
     setFormPriority(task.priority || "medium");
     setFormAgent(task.assigned_agent_id ? String(task.assigned_agent_id) : "");
     setFormProject(task.project_id);
+    setFormDepIds(task.dependency_ids ? JSON.parse(task.dependency_ids) : (task.dependency_id ? [task.dependency_id] : []));
     setShowEditModal(true);
   };
 
@@ -171,6 +173,8 @@ export default function TasksPage() {
       priority: formPriority,
       assigned_agent_id: formAgent ? +formAgent : undefined,
       project_id: formProject,
+      dependency_id: formDepIds[0] || undefined,
+      dependency_ids: formDepIds.length > 0 ? JSON.stringify(formDepIds) : undefined,
     });
     setShowEditModal(false);
     loadData();
@@ -182,9 +186,11 @@ export default function TasksPage() {
       description: formDesc,
       priority: formPriority,
       assigned_agent_id: formAgent ? +formAgent : undefined,
+      dependency_id: formDepIds[0] || undefined,
+      dependency_ids: formDepIds.length > 0 ? JSON.stringify(formDepIds) : undefined,
     });
     setShowAddModal(false);
-    setFormTitle(""); setFormDesc(""); setFormPriority("medium"); setFormAgent(""); setFormProject(projects[0]?.id || 0);
+    setFormTitle(""); setFormDesc(""); setFormPriority("medium"); setFormAgent(""); setFormProject(projects[0]?.id || 0); setFormDepIds([]);
     loadData();
   };
 
@@ -346,6 +352,18 @@ export default function TasksPage() {
             <select value={formProject} onChange={(e) => setFormProject(Number(e.target.value))}>
               {projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
             </select>
+            <label>Depends on</label>
+            <select
+              multiple
+              value={formDepIds.map(String)}
+              onChange={(e) => setFormDepIds(Array.from(e.target.selectedOptions).map(o => Number(o.value)))}
+              className="border rounded p-2 min-h-[80px] text-sm w-full"
+            >
+              {tasks.filter(t => t.project_id === formProject && t.id !== editTask?.id).map(t => (
+                <option key={t.id} value={t.id}>{t.title}</option>
+              ))}
+            </select>
+            {tasks.filter(t => t.project_id === formProject && t.id !== editTask?.id).length === 0 && <span className="text-muted text-xs">No other tasks in this project</span>}
           </div>
           <div className="modal-footer">
             <button onClick={() => setShowAddModal(false)}>Cancel</button>
@@ -378,6 +396,18 @@ export default function TasksPage() {
             <select value={formProject} onChange={(e) => setFormProject(Number(e.target.value))}>
               {projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
             </select>
+            <label>Depends on</label>
+            <select
+              multiple
+              value={formDepIds.map(String)}
+              onChange={(e) => setFormDepIds(Array.from(e.target.selectedOptions).map(o => Number(o.value)))}
+              className="border rounded p-2 min-h-[80px] text-sm w-full"
+            >
+              {tasks.filter(t => t.project_id === formProject && t.id !== editTask?.id).map(t => (
+                <option key={t.id} value={t.id}>{t.title}</option>
+              ))}
+            </select>
+            {tasks.filter(t => t.project_id === formProject && t.id !== editTask?.id).length === 0 && <span className="text-muted text-xs">No other tasks in this project</span>}
           </div>
           <div className="modal-footer">
             <button onClick={() => setShowEditModal(false)}>Cancel</button>

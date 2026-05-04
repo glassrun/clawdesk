@@ -109,6 +109,7 @@ export default function AgentsPage() {
       });
     } else {
       await createAgent({ job_title: formName, job_description: formDesc });
+      await syncAgents();
     }
     setShowModal(false);
     loadData();
