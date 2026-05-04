@@ -108,6 +108,13 @@ async function executeTask(agent, task) {
   if (task.description) message += `\n${task.description}`;
 
   message += `\n\n--- TOOLS ---`;
+  message += `\nYou can create new tasks for this project via HTTP POST:`;
+  message += `\nURL: ${BASE_URL}/api/projects/${task.project_id}/tasks/from-agent`;
+  message += `\nBody (JSON): { agent_id: "${agent.openclaw_agent_id}", title: "task title", description: "details", assigned_to_agent_id: "target-agent", priority: "medium" }`;
+  message += `\nValid agent IDs: ${db.loadAgents().map(a => a.openclaw_agent_id).join(', ')}`;
+  message += `\nIMPORTANT: assigned_to_agent_id is REQUIRED. Pick the agent who should do the work.`;
+  message += `\nTo create MULTIPLE tasks, make MULTIPLE calls - one endpoint call per task.`;
+  message += `\n`;
   message += `\nYou can create new agents for this project via HTTP POST:`;
   message += `\nURL: ${BASE_URL}/api/agents`;
   message += `\nBody (JSON): { job_title: "Senior Security Engineer", job_description: "Penetration testing, audits..." }`;
