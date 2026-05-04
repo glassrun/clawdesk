@@ -126,6 +126,42 @@ function isTaskSatisfied(task, tasks) {
 let heartbeatRunning = false;
 let heartbeatStats = { cycles: 0, totalMs: 0, agentsProcessed: 0, errors: 0, lastCycleMs: 0, last10Ms: [] };
 
+// Lightweight agent heartbeat check — no massive timeouts, just pick ONE due agent per tick
+async function runHeartbeatTick() {
+  const db = require('../db');
+  const now = new Date();
+  const agents = db.loadAgents().filter(a => a.heartbeat_enabled && a.status === 'active');
+  
+  // Find the first due agent (don't hammer all agents at once)
+  const dueAgent = agents.find(a => {
+    if (!a.last_heartbeat) return true;
+    return (now - new Date(a.last_heartbeat)) / 1000 >= a.heartbeat_interval;
+  });
+  
+  if (!dueAgent) return null;
+  
+  const cycleHeartbeats = [];
+  try {
+    const result = await triggerHeartbeat(dueAgent, cycleHeartbeats);
+    if (cycleHeartbeats.length > 0) {
+      const hbs = db.loadHeartbeats();
+      const maxId = hbs.length > 0 ? Math.max(...hbs.map(h => h.id)) : 0;
+      cycleHeartbeats.forEach((hb, i) => {
+        hbs.push({ id: maxId + i + 1, ...hb, action_taken: JSON.stringify(hb.action_taken) });
+      });
+      db.saveHeartbeats(hbs);
+    }
+    heartbeatStats.agentsProcessed++;
+    if (result.action === 'error' || result.action === 'failed') heartbeatStats.errors++;
+    return result;
+  } catch (e) {
+    console.error(`[Heartbeat] ${dueAgent.name}: ${e.message}`);
+    heartbeatStats.errors++;
+    return { agent: dueAgent.name, action: 'error', error: e.message };
+  }
+}
+
+// Full cycle still runs periodically for stuck-task reset, auto-retry, and SSE broadcast
 async function runHeartbeatCycle() {
   heartbeatRunning = true;
   const cycleStart = Date.now();
@@ -234,16 +270,28 @@ async function runHeartbeatCycle() {
 }
 
 function startHeartbeatEngine() {
+  // Quick tick every second - process one due agent per tick (no massive Promise.all)
+  setInterval(async () => {
+    try {
+      const r = await runHeartbeatTick();
+      if (r) {
+        console.log(`[Heartbeat tick] ${r.agent}→${r.action}`);
+        if (_broadcastSSE) _broadcastSSE('heartbeat', { results: [r], ts: Date.now() });
+      }
+    } catch (e) { console.error('[Heartbeat tick]', e.message); }
+  }, 1000);
+  
+  // Full maintenance cycle every 30s - stuck reset, auto-retry, stats broadcast
   setInterval(async () => {
     try {
       const r = await runHeartbeatCycle();
-      if (r.length > 0) {
-        console.log(`[Heartbeat] ${r.map(x => `${x.agent}→${x.action}`).join(', ')}`);
+      if (r && r.length > 0) {
+        console.log(`[Heartbeat cycle] ${r.map(x => `${x.agent}→${x.action}`).join(', ')}`);
         if (_broadcastSSE) _broadcastSSE('heartbeat', { results: r, ts: Date.now() });
       }
-    } catch (e) { console.error('[Heartbeat]', e.message); }
-  }, 1000);
-  console.log('[Heartbeat] Engine started (1s interval)');
+    } catch (e) { console.error('[Heartbeat cycle]', e.message); }
+  }, 30000);
+  console.log('[Heartbeat] Engine started (1s tick + 30s cycle)');
 }
 
 function getStats() {
