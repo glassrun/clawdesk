@@ -10,7 +10,7 @@ function setBroadcastSSE(fn) { _broadcastSSE = fn; }
 function setSetTaskStatus(fn) { _setTaskStatus = fn; }
 function setSyncFromOpenClaw(fn) { _syncFromOpenClaw = fn; }
 
-module.exports = { runHeartbeatCycle, triggerHeartbeat, startHeartbeatEngine, setBroadcastSSE, setSetTaskStatus, setSyncFromOpenClaw, getStats, isRunning };
+module.exports = { runHeartbeatCycle, triggerHeartbeat, startHeartbeatEngine, setBroadcastSSE, setSetTaskStatus, setSyncFromOpenClaw, setTaskStatus, getStats, isRunning };
 
 // ===================== TRACKING HELPERS =====================
 

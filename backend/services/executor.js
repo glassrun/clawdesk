@@ -1,6 +1,6 @@
 const path = require('path');
 const fs = require('fs');
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 const { nextId } = require('../db');
 const OPENCLAW_CLI = (() => {
   const val = process.env.OPENCLAW_CLI;
