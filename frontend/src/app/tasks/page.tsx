@@ -59,7 +59,7 @@ export default function TasksPage() {
   const [formDesc, setFormDesc] = useState("");
   const [formPriority, setFormPriority] = useState("medium");
   const [formAgent, setFormAgent] = useState("");
-  const [formProject, setFormProject] = useState(1);
+  const [formProject, setFormProject] = useState(0);
 
   const buildParams = useCallback(() => {
     const params: any = { page, limit: 30 };
@@ -110,6 +110,13 @@ export default function TasksPage() {
       refreshData();
     }
   }, [lastMessage, refreshData]);
+
+  // Ensure formProject is valid when Add modal opens
+  useEffect(() => {
+    if (showAddModal && !formProject && projects[0]) {
+      setFormProject(projects[0].id);
+    }
+  }, [showAddModal, formProject, projects]);
 
   const handleRun = async (id: number) => {
     setRunningTask(id);
@@ -177,7 +184,7 @@ export default function TasksPage() {
       assigned_agent_id: formAgent ? +formAgent : undefined,
     });
     setShowAddModal(false);
-    setFormTitle(""); setFormDesc(""); setFormPriority("medium"); setFormAgent(""); setFormProject(1);
+    setFormTitle(""); setFormDesc(""); setFormPriority("medium"); setFormAgent(""); setFormProject(projects[0]?.id || 0);
     loadData();
   };
 

@@ -1,6 +1,7 @@
 function normalizeTask(t, agents) {
   const a = agents?.find(x => x.id === t.assigned_agent_id);
-  return { ...t, priority: t.priority || 'medium', agent_name: a?.name, openclaw_agent_id: a?.openclaw_agent_id };
+  const creator = agents?.find(x => x.id === t.created_by_agent_id);
+  return { ...t, priority: t.priority || 'medium', agent_name: a?.name, openclaw_agent_id: a?.openclaw_agent_id, created_by_agent_slug: creator?.name || creator?.openclaw_agent_id || null };
 }
 
 module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
