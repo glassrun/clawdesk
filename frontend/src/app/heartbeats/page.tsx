@@ -79,7 +79,7 @@ export default function HeartbeatsPage() {
 
       {/* Filter Tabs */}
       <div className="flex gap-2 mb-4">
-        {(["ok", "warning", "failed", "idle"] as FilterStatus[]).map(f => (
+        {(["ok", "warning", "failed", "idle"] as const).map(f => (
           <button
             key={f}
             className={`btn-sm ${filter === f ? "primary" : ""}`}

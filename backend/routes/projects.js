@@ -6,6 +6,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
   router.get('/', (req, res) => {
     let projects = db.loadProjects();
     if (req.query.status) projects = projects.filter(p => p.status === req.query.status);
+    if (req.query.template === '1') projects = projects.filter(p => p.is_template);
     const tasks = db.loadTasks();
     res.json(projects.map(p => {
       const pt = tasks.filter(t => t.project_id === p.id);
@@ -15,7 +16,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
   });
 
   router.post('/', (req, res) => {
-    const { title, description, workspace_path, status } = req.body;
+    const { title, description, workspace_path, status, is_template } = req.body;
     if (!title) return res.status(400).json({ error: 'title required' });
     if (title.length > 200) return res.status(400).json({ error: 'title too long (max 200 chars)' });
     if (status && !['active', 'completed', 'failed'].includes(status)) return res.status(400).json({ error: 'status must be active, completed, or failed' });
@@ -26,9 +27,10 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     }
     fs.mkdirSync(finalWorkspace, { recursive: true, mode: 0o755 });
     const projects = db.loadProjects();
-    const p = { id: nextId('projects'), title, description: description || '', workspace_path: finalWorkspace, status: status || 'active', created_at: new Date().toISOString() };
+    const p = { id: nextId('projects'), title, description: description || '', workspace_path: finalWorkspace, status: status || 'active', is_template: is_template ? 1 : 0, template_source_id: null, created_at: new Date().toISOString() };
     projects.push(p);
     db.saveProjects(projects);
+    broadcastSSE('projects', { action: 'created', project: p });
     res.status(201).json(p);
   });
 
@@ -52,6 +54,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     if (!p) return res.status(404).json({ error: 'not found' });
     const agents = db.loadAgents();
     const tasks = db.loadTasks().filter(t => t.project_id === p.id);
+    const allTaskIds = new Set(tasks.map(t => t.id));
     const byStatus = {}; const byPriority = {}; const byAgent = {};
     let oldestPending = null; let oldestInProgress = null;
     for (const t of tasks) {
@@ -69,12 +72,26 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
       const a = agents.find(x => x.id === +aid);
       return { agent_id: +aid, agent_name: a?.name, openclaw_agent_id: a?.openclaw_agent_id, ...counts };
     }).sort((a, b) => b.total - a.total);
+    // Cost aggregation from task_results for tasks in this project
+    const allResults = db.loadTaskResults().filter(r => allTaskIds.has(r.task_id));
+    const totalCost = allResults.reduce((s, r) => s + (r.cost || 0), 0);
+    const costByAgent = {};
+    for (const r of allResults) {
+      if (!costByAgent[r.agent_id]) costByAgent[r.agent_id] = 0;
+      costByAgent[r.agent_id] += r.cost || 0;
+    }
+    const costBreakdown = Object.entries(costByAgent).map(([aid, cost]) => {
+      const a = agents.find(x => x.id === +aid);
+      return { agent_id: +aid, agent_name: a?.name, cost_usd: parseFloat(cost.toFixed(6)) };
+    }).sort((a, b) => b.cost_usd - a.cost_usd);
     res.json({
       project_id: p.id, title: p.title, status: p.status,
       total_tasks: tasks.length, completion_pct: tasks.length > 0 ? Math.round((byStatus.done || 0) / tasks.length * 100) : 0,
       by_status: byStatus, by_priority: byPriority,
       agent_breakdown: agentBreakdown,
-      oldest_pending: oldestPending, oldest_in_progress: oldestInProgress
+      oldest_pending: oldestPending, oldest_in_progress: oldestInProgress,
+      total_cost_usd: parseFloat(totalCost.toFixed(6)),
+      cost_breakdown: costBreakdown,
     });
   });
 
@@ -82,10 +99,11 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     const projects = db.loadProjects();
     const p = projects.find(x => x.id === +req.params.id);
     if (!p) return res.status(404).json({ error: 'not found' });
-    const { title, description, workspace_path, status } = req.body;
+    const { title, description, workspace_path, status, is_template } = req.body;
     if (workspace_path === '') return res.status(400).json({ error: 'workspace_path cannot be empty string (use null or omit to keep existing)' });
-    Object.assign(p, { title: title ?? p.title, description: description ?? p.description, workspace_path: workspace_path ?? p.workspace_path, status: status ?? p.status });
+    Object.assign(p, { title: title ?? p.title, description: description ?? p.description, workspace_path: workspace_path ?? p.workspace_path, status: status ?? p.status, is_template: is_template !== undefined ? (is_template ? 1 : 0) : p.is_template });
     db.saveProjects(projects);
+    broadcastSSE('projects', { action: 'updated', project: p });
     res.json(p);
   });
 
@@ -96,7 +114,63 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     if (p.status === 'active') return res.status(400).json({ error: 'project is already active' });
     p.status = 'active';
     db.saveProjects(projects);
+    broadcastSSE('projects', { action: 'updated', project: p });
     res.json({ ok: true, id: p.id, title: p.title, status: p.status });
+  });
+
+  router.post('/:id/clone', (req, res) => {
+    const projects = db.loadProjects();
+    const source = projects.find(x => x.id === +req.params.id);
+    if (!source) return res.status(404).json({ error: 'not found' });
+    const allTasks = db.loadTasks();
+    const sourceTasks = allTasks.filter(t => t.project_id === source.id);
+
+    // Create new project
+    const newId = nextId('projects');
+    const slug = (source.title + '-clone').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    let ws = path.join(process.env.HOME, `clawdesk-projects/${slug}-${Date.now()}`);
+    fs.mkdirSync(ws, { recursive: true, mode: 0o755 });
+    const now = new Date().toISOString();
+    const newProject = {
+      ...source,
+      id: newId,
+      title: source.title + ' (clone)',
+      status: 'active',
+      is_template: 0,
+      template_source_id: source.id,
+      created_at: now,
+      workspace_path: ws,
+    };
+    projects.push(newProject);
+    db.saveProjects(projects);
+
+    // Clone tasks with all reset to pending
+    const newTasks = allTasks.filter(t => t.project_id !== source.id);
+    const idMap = {}; // old id -> new id
+    for (const t of sourceTasks) {
+      const newTaskId = nextId('tasks');
+      idMap[t.id] = newTaskId;
+      newTasks.push({
+        ...t,
+        id: newTaskId,
+        project_id: newId,
+        status: 'pending',
+        assigned_agent_id: null,
+        created_at: now,
+        completed_at: null,
+        run_count: 0,
+        _retry_count: 0,
+      });
+    }
+    // Remap dependency ids in cloned tasks
+    for (const t of newTasks) {
+      if (t.project_id === newId && t.dependency_id && idMap[t.dependency_id]) {
+        t.dependency_id = idMap[t.dependency_id];
+      }
+    }
+    db.saveTasks(newTasks);
+    broadcastSSE('projects', { action: 'created', project: newProject });
+    res.status(201).json({ ...newProject, task_total: sourceTasks.length, task_done: 0, completion_pct: 0 });
   });
 
   router.delete('/:id', (req, res) => {
@@ -105,6 +179,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     if (!p) return res.status(404).json({ error: 'not found' });
     db.remove('projects', { id: p.id });
     db.remove('tasks', { project_id: p.id });
+    broadcastSSE('projects', { action: 'deleted', project_id: p.id });
     res.json({ ok: true, soft_deleted: true });
   });
 

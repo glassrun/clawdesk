@@ -54,6 +54,7 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 // ===================== SSE CLIENTS =====================
 
 let sseClients = new Set();
+let taskSseClients = new Map(); // taskId -> Set<Response>
 
 function broadcastSSE(event, data) {
   const payload = JSON.stringify({ event, data, ts: Date.now() });
@@ -180,7 +181,10 @@ function setTaskStatus(taskId, newStatus) {
   return t;
 }
 
-// Register setTaskStatus with heartbeat service
+// Register SSE context with executor and heartbeat services
+const executor = require('./services/executor');
+executor.setSSEContext(broadcastSSE, taskSseClients);
+
 const heartbeat = require('./services/heartbeat');
 heartbeat.setBroadcastSSE(broadcastSSE);
 heartbeat.setSetTaskStatus(setTaskStatus);
@@ -226,6 +230,10 @@ app.use('/api/tasks', tasksRouter);
 const streamRouter = express.Router();
 require('./routes/stream')(streamRouter, { sseClients, broadcastSSE });
 app.use('/api/stream', streamRouter);
+
+const taskStreamRouter = express.Router();
+require('./routes/stream-task')(taskStreamRouter, { taskSseClients });
+app.use('/api/stream/task', taskStreamRouter);
 
 const systemRouter = express.Router();
 const systemCtx = { db, broadcastSSE };

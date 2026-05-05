@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { getProjects, createProject, deleteProject, updateProject, type Project } from "@/lib/api";
+import { getProjects, createProject, deleteProject, updateProject, cloneProject, getProjectTemplates, type Project } from "@/lib/api";
+import { useQuery } from "@tanstack/react-query";
 
 function timeAgo(dateStr: string | undefined) {
   if (!dateStr) return "never";
@@ -15,75 +16,125 @@ function timeAgo(dateStr: string | undefined) {
 }
 
 export default function ProjectsPage() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editProject, setEditProject] = useState<Project | null>(null);
   const [formTitle, setFormTitle] = useState("");
   const [formDesc, setFormDesc] = useState("");
   const [formStatus, setFormStatus] = useState("active");
+  const [formIsTemplate, setFormIsTemplate] = useState(false);
+  const [addTab, setAddTab] = useState<"blank" | "template">("blank");
+  const [menuOpen, setMenuOpen] = useState<number | null>(null);
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const res = await getProjects();
-      setProjects(res);
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
-  };
+  const { data: projectsData, refetch: refetchProjects } = useQuery({
+    queryKey: ["projects"],
+    queryFn: () => getProjects(),
+  });
 
-  useEffect(() => { loadData(); }, []);
+  const { data: templatesData } = useQuery({
+    queryKey: ["project-templates"],
+    queryFn: () => getProjectTemplates(),
+  });
+
+  const projects = projectsData || [];
+  const templates = templatesData || [];
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuOpen !== null) setMenuOpen(null);
+    };
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [menuOpen]);
 
   const handleAdd = async () => {
     if (!formTitle.trim()) return;
-    await createProject({ title: formTitle, description: formDesc });
+    await createProject({ title: formTitle, description: formDesc, status: formStatus, is_template: formIsTemplate });
     setShowAddModal(false);
-    setFormTitle(""); setFormDesc("");
-    loadData();
+    setFormTitle(""); setFormDesc(""); setFormStatus("active"); setFormIsTemplate(false);
+    refetchProjects();
   };
 
   const handleDelete = async (id: number) => {
     if (!confirm("Delete this project?")) return;
     await deleteProject(id);
-    loadData();
+    refetchProjects();
   };
 
+  const handleCloneAsTemplate = async (id: number) => {
+    setMenuOpen(null);
+    const p = projects.find(x => x.id === id);
+    if (!p) return;
+    await createProject({
+      title: p.title + " (template)",
+      description: p.description,
+      status: "active",
+      is_template: true,
+    });
+    refetchProjects();
+  };
+
+  const handleClone = async (id: number) => {
+    setMenuOpen(null);
+    await cloneProject(id);
+    refetchProjects();
+  };
 
   const openEditModal = (project: Project) => {
     setEditProject(project);
     setFormTitle(project.title);
     setFormDesc(project.description || "");
     setFormStatus(project.status || "active");
+    setFormIsTemplate(!!project.is_template);
     setShowEditModal(true);
   };
 
-
   const handleEditSave = async () => {
     if (!editProject) return;
-    await updateProject(editProject.id, { title: formTitle, description: formDesc, status: formStatus });
+    await updateProject(editProject.id, { title: formTitle, description: formDesc, status: formStatus, is_template: formIsTemplate });
     setShowEditModal(false);
-    loadData();
+    refetchProjects();
+  };
+
+  const handleCreateFromTemplate = async (templateId: number) => {
+    setMenuOpen(null);
+    await cloneProject(templateId);
+    refetchProjects();
+    setShowAddModal(false);
   };
 
   return (
     <div className="page-wrap">
       <div className="flex items-center justify-between">
         <h1>All Projects</h1>
-        <button className="btn-primary" onClick={() => setShowAddModal(true)}>+ Add Project</button>
+        <button className="btn-primary" onClick={() => { setAddTab("blank"); setShowAddModal(true); }}>+ Add Project</button>
       </div>
 
-
-      {loading ? <div className="text-center text-muted py-8">Loading...</div> :
-      projects.length === 0 ? <div className="text-center text-muted py-8">No projects</div> :
+      {projects.length === 0 ? <div className="text-center text-muted py-8">No projects</div> :
       <div className="flex gap-3 flex-wrap mt-4">
         {projects.map(p => (
           <div key={p.id} className="card" style={{minWidth: '280px', flex: '1 1 300px'}}>
             <div className="card-content">
               <div className="flex items-center justify-between pb-2">
-                <h3>{p.title}</h3>
-                <button className="btn-sm danger" onClick={() => handleDelete(p.id)}>🗑️</button>
-                <button className="btn-sm" onClick={() => openEditModal(p)}>✏️</button>
+                <div className="flex items-center gap-2">
+                  <h3>{p.title}</h3>
+                  {p.is_template ? <span title="Template project" className="text-lg">📋</span> : null}
+                </div>
+                <div className="flex gap-1">
+                  <div style={{ position: "relative" }}>
+                    <button className="btn-sm" onClick={(e) => { e.stopPropagation(); setMenuOpen(menuOpen === p.id ? null : p.id); }}>⋮</button>
+                    {menuOpen === p.id && (
+                      <div className="dropdown-menu" style={{ position: "absolute", right: 0, top: "100%", zIndex: 10, minWidth: "160px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "8px", padding: "4px 0", boxShadow: "0 4px 12px rgba(0,0,0,0.3)" }}>
+                        <button className="dropdown-item" onClick={() => { setMenuOpen(null); window.location.href = `/projects?id=${p.id}`; }}>📂 Open</button>
+                        <button className="dropdown-item" onClick={() => openEditModal(p)}>✏️ Edit</button>
+                        <button className="dropdown-item" onClick={() => handleClone(p.id)}>📄 Clone</button>
+                        <button className="dropdown-item" onClick={() => handleCloneAsTemplate(p.id)}>📋 Clone as Template</button>
+                        <hr style={{ borderColor: "var(--border)", margin: "4px 0" }} />
+                        <button className="dropdown-item text-red-400" onClick={() => handleDelete(p.id)}>🗑️ Delete</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
               <p className="text-sm text-muted">{p.description || "No description"}</p>
               {p.workspace_path && <p className="text-xs text-soft mt-2">📁 {p.workspace_path}</p>}
@@ -99,19 +150,57 @@ export default function ProjectsPage() {
         ))}
       </div>}
 
-
       {showAddModal && <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
         <div className="modal" onClick={e => e.stopPropagation()}>
           <div className="modal-header"><h3>Add Project</h3></div>
-          <div>
-            <label>Title</label>
-            <input value={formTitle} onChange={(e) => setFormTitle(e.target.value)} placeholder="Project title" />
-            <label>Description</label>
-            <textarea value={formDesc} onChange={(e) => setFormDesc(e.target.value)} placeholder="Description" rows={3} />
+          <div className="flex gap-1 mb-4">
+            <button className={`btn-sm ${addTab === "blank" ? "primary" : ""}`} onClick={() => setAddTab("blank")}>Blank Project</button>
+            <button className={`btn-sm ${addTab === "template" ? "primary" : ""}`} onClick={() => setAddTab("template")}>From Template</button>
           </div>
+          {addTab === "blank" ? (
+            <div>
+              <label>Title</label>
+              <input value={formTitle} onChange={(e) => setFormTitle(e.target.value)} placeholder="Project title" />
+              <label>Description</label>
+              <textarea value={formDesc} onChange={(e) => setFormDesc(e.target.value)} placeholder="Description" rows={3} />
+              <label>Status</label>
+              <select value={formStatus} onChange={e => setFormStatus(e.target.value)}>
+                <option value="active">Active</option>
+                <option value="completed">Completed</option>
+                <option value="failed">Failed</option>
+              </select>
+              <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                <input type="checkbox" checked={formIsTemplate} onChange={(e) => setFormIsTemplate(e.target.checked)} />
+                <span className="text-sm">Save as template</span>
+                <span className="text-xs text-muted">📋</span>
+              </label>
+            </div>
+          ) : (
+            <div>
+              <p className="text-sm text-muted mb-3">Select a template to create a new project from:</p>
+              {templates.length === 0 ? (
+                <div className="text-center text-muted py-6">No templates yet. Create a project and save it as template.</div>
+              ) : (
+                <div className="flex gap-2 flex-wrap">
+                  {templates.map(t => (
+                    <div key={t.id} className="card cursor-pointer hover:border-[var(--primary)]" style={{minWidth: "200px", flex: "1 1 200px"}} onClick={() => handleCreateFromTemplate(t.id)}>
+                      <div className="card-content">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">📋</span>
+                          <span className="font-medium text-sm">{t.title}</span>
+                        </div>
+                        <p className="text-xs text-muted mt-1">{t.description || "No description"}</p>
+                        <p className="text-xs text-soft mt-1">{t.task_total || 0} tasks</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <div className="modal-footer">
             <button onClick={() => setShowAddModal(false)}>Cancel</button>
-            <button className="btn-primary" onClick={handleAdd}>Add</button>
+            {addTab === "blank" && <button className="btn-primary" onClick={handleAdd}>Add</button>}
           </div>
         </div>
       </div>}
@@ -130,6 +219,11 @@ export default function ProjectsPage() {
               <option value="completed">Completed</option>
               <option value="failed">Failed</option>
             </select>
+            <label className="flex items-center gap-2 mt-2 cursor-pointer">
+              <input type="checkbox" checked={formIsTemplate} onChange={(e) => setFormIsTemplate(e.target.checked)} />
+              <span className="text-sm">Save as template</span>
+              <span className="text-xs text-muted">📋</span>
+            </label>
           </div>
           <div className="modal-footer">
             <button onClick={() => setShowEditModal(false)}>Cancel</button>

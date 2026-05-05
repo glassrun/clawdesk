@@ -27,7 +27,7 @@ process.on('uncaughtException', (err) => {
 
 // ===================== Schema version / Migrations =====================
 
-const CURRENT_VERSION = 3;
+const CURRENT_VERSION = 4;
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS _changelog (
@@ -122,7 +122,12 @@ db.exec(`
     output        TEXT    DEFAULT '',
     duration_ms   INTEGER DEFAULT 0,
     executed_at   TEXT,
-    created_agent TEXT    DEFAULT ''
+    created_agent TEXT    DEFAULT '',
+    input_tokens     INTEGER DEFAULT 0,
+    output_tokens    INTEGER DEFAULT 0,
+    cache_read_tokens INTEGER DEFAULT 0,
+    total_tokens     INTEGER DEFAULT 0,
+    cost              REAL    DEFAULT 0
   );
 `);
 
@@ -150,6 +155,31 @@ function runMigrations() {
       const tasks = db.prepare("SELECT id, dependency_id FROM tasks WHERE dependency_id IS NOT NULL AND deleted_at IS NULL").all();
       const upd = db.prepare("UPDATE tasks SET dependency_ids = ? WHERE id = ?");
       for (const t of tasks) upd.run(JSON.stringify([t.dependency_id]), t.id);
+    },
+    // v4: add project template fields
+    () => {
+      const addCol = (table, col, type) => {
+        try {
+          const existing = db.prepare(`PRAGMA table_info(${table})`).all().map(r => r.name);
+          if (!existing.includes(col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
+        } catch (e) {}
+      };
+      addCol('projects', 'is_template', 'INTEGER DEFAULT 0');
+      addCol('projects', 'template_source_id', 'INTEGER');
+    },
+    // v5: add token usage + cost tracking to task_results
+    () => {
+      const addCol = (table, col, type) => {
+        try {
+          const existing = db.prepare(`PRAGMA table_info(${table})`).all().map(r => r.name);
+          if (!existing.includes(col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
+        } catch (e) {}
+      };
+      addCol('task_results', 'input_tokens',     'INTEGER DEFAULT 0');
+      addCol('task_results', 'output_tokens',    'INTEGER DEFAULT 0');
+      addCol('task_results', 'cache_read_tokens','INTEGER DEFAULT 0');
+      addCol('task_results', 'total_tokens',     'INTEGER DEFAULT 0');
+      addCol('task_results', 'cost',             'REAL DEFAULT 0');
     },
   ];
 
@@ -363,15 +393,15 @@ function saveTaskResults(data) {
   const MAX = 500;
   const trimmed = data.slice(-MAX);
   db.exec("DELETE FROM task_results");
-  const ins = db.prepare(`INSERT INTO task_results (id,task_id,agent_id,input,output,duration_ms,executed_at,created_agent)
-    VALUES (?,?,?,?,?,?,?,?)`);
-  for (const r of trimmed) ins.run(r.id,r.task_id,r.agent_id||null,r.input||'',r.output||'',r.duration_ms||0,r.executed_at,r.created_agent||'');
+  const ins = db.prepare(`INSERT INTO task_results (id,task_id,agent_id,input,output,duration_ms,executed_at,created_agent,input_tokens,output_tokens,cache_read_tokens,total_tokens,cost)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+  for (const r of trimmed) ins.run(r.id,r.task_id,r.agent_id||null,r.input||'',r.output||'',r.duration_ms||0,r.executed_at,r.created_agent||'',r.input_tokens||0,r.output_tokens||0,r.cache_read_tokens||0,r.total_tokens||0,r.cost||0);
 }
 function insertTaskResult(r) {
   const id = nextId('task_results');
-  db.prepare(`INSERT INTO task_results (id,task_id,agent_id,input,output,duration_ms,executed_at,created_agent)
-    VALUES (?,?,?,?,?,?,?,?)`)
-    .run(id, r.task_id, r.agent_id||null, r.input||'', r.output||'', r.duration_ms||0, r.executed_at||new Date().toISOString(), r.created_agent||'');
+  db.prepare(`INSERT INTO task_results (id,task_id,agent_id,input,output,duration_ms,executed_at,created_agent,input_tokens,output_tokens,cache_read_tokens,total_tokens,cost)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(id, r.task_id, r.agent_id||null, r.input||'', r.output||'', r.duration_ms||0, r.executed_at||new Date().toISOString(), r.created_agent||'', r.input_tokens||0, r.output_tokens||0, r.cache_read_tokens||0, r.total_tokens||0, r.cost||0);
   return id;
 }
 

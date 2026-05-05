@@ -28,6 +28,7 @@ export interface Agent {
   tasks_in_progress?: number;
   tasks_done?: number;
   tasks_failed?: number;
+  total_cost_usd?: number;
 }
 
 export interface Project {
@@ -40,6 +41,8 @@ export interface Project {
   task_done?: number;
   completion_pct?: number;
   created_at?: string;
+  is_template?: number | boolean;
+  template_source_id?: number | null;
 }
 
 export interface Task {
@@ -55,6 +58,7 @@ export interface Task {
   dependency_id?: number;
   dependency_ids?: string; // JSON array of task ids
   dep_titles?: { id: number; title: string }[];
+  dep_title?: string; // single dependency title (from backend)
   creates_agent?: string;
   created_by_agent_slug?: string;
   created_at: string;
@@ -143,11 +147,20 @@ export async function deleteAgent(id: number) {
   return api<{ success: boolean }>(`/api/agents/${id}?force=1`, { method: 'DELETE' });
 }
 
-export async function createProject(data: { title: string; description?: string; workspace_path?: string; status?: string }) {
+export async function createProject(data: { title: string; description?: string; workspace_path?: string; status?: string; is_template?: boolean }) {
   return api<Project>('/api/projects', { method: 'POST', body: JSON.stringify(data) });
 }
 
-export async function updateProject(id: number, data: Partial<Project>) {
+export async function cloneProject(id: number) {
+  return api<Project>(`/api/projects/${id}/clone`, { method: 'POST' });
+}
+
+export async function getProjectTemplates() {
+  const res = await api<Project[]>('/api/projects?template=1');
+  return Array.isArray(res) ? res : [];
+}
+
+export async function updateProject(id: number, data: Partial<Project> & { is_template?: boolean }) {
   return api<Project>(`/api/projects/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 }
 
@@ -172,7 +185,7 @@ export async function runTask(id: number) {
 }
 
 export async function getTaskResults(id: number) {
-  return api<{ input: string; output: string; executed_at: string }[]>(`/api/tasks/${id}/results`);
+  return api<{ task_id: number; input: string; output: string; executed_at: string; status?: string; input_tokens?: number; output_tokens?: number; cache_read_tokens?: number; cost?: number }[]>(`/api/tasks/${id}/results`);
 }
 
 export async function tickHeartbeats() {

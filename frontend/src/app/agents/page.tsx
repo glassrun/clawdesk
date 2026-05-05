@@ -24,6 +24,22 @@ function timeAgo(dateStr: string | undefined) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
+function BudgetGauge({ cost, limit }: { cost: number; limit: number }) {
+  if (limit <= 0) return <span className="text-xs text-muted">No limit</span>;
+  const pct = Math.min((cost / limit) * 100, 100);
+  const color = pct >= 90 ? "var(--danger)" : pct >= 75 ? "var(--warning)" : "var(--success)";
+  return (
+    <div className="flex items-center gap-2">
+      <div className="w-16 h-2 rounded bg-[var(--bg-hover)] overflow-hidden">
+        <div className="h-full rounded" style={{ width: `${pct}%`, background: color }} />
+      </div>
+      <span className="text-xs font-mono" style={{ color }}>
+        {cost > 0 ? `$${cost.toFixed(3)}` : "—"}
+      </span>
+    </div>
+  );
+}
+
 export default function AgentsPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,6 +52,7 @@ export default function AgentsPage() {
   const [formStatus, setFormStatus] = useState("idle");
   const [formHbEnabled, setFormHbEnabled] = useState(0);
   const [formHbInterval, setFormHbInterval] = useState(30);
+  const [formBudgetLimit, setFormBudgetLimit] = useState(0);
 
   const loadData = async () => {
     setLoading(true);
@@ -47,12 +64,12 @@ export default function AgentsPage() {
   };
 
   const { lastMessage } = useStream();
-  
+
   useEffect(() => { loadData(); }, []);
-  
+
   useEffect(() => {
     if (!lastMessage) return;
-    if (lastMessage.event === "tasks") {
+    if (lastMessage.event === "tasks" || lastMessage.event === "agents") {
       loadData();
     }
   }, [lastMessage]);
@@ -85,6 +102,7 @@ export default function AgentsPage() {
     setFormStatus(agent.status || "idle");
     setFormHbEnabled(agent.heartbeat_enabled ? 1 : 0);
     setFormHbInterval(agent.heartbeat_interval || 1);
+    setFormBudgetLimit(agent.budget_limit ?? 0);
     setShowModal(true);
   };
 
@@ -106,6 +124,7 @@ export default function AgentsPage() {
         status: formStatus,
         heartbeat_enabled: formHbEnabled === 1,
         heartbeat_interval: formHbInterval,
+        budget_limit: formBudgetLimit,
       });
     } else {
       await createAgent({ job_title: formName, job_description: formDesc });
@@ -140,27 +159,40 @@ export default function AgentsPage() {
                   <th className="p-3">Status</th>
                   <th className="p-3">Tasks Done</th>
                   <th className="p-3">Last Seen</th>
-                  <th className="p-3">Heartbeat</th>
+                  <th className="p-3">Budget</th>
+                  <th className="p-3">Total Cost</th>
                   <th className="p-3">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {agents.map(a => (
-                  <tr key={a.openclaw_agent_id}>
-                    <td className="p-3">{a.openclaw_agent_id}</td>
-                    <td className="p-3">{a.name}</td>
-                    <td className="p-3">{statusBadge(a.status || "idle")}</td>
-                    <td className="p-3">{a.tasks_done || 0}</td>
-                    <td className="p-3 text-soft">{timeAgo(a.last_heartbeat)}</td>
-                    <td className="p-3 text-soft">{a.heartbeat_enabled ? `${a.heartbeat_interval || 1}s` : 'off'}</td>
-                    <td className="p-3">
-                      <div className="flex gap-1">
-                        <button className="btn-sm" onClick={() => openEditModal(a)}>✏️</button>
-                        <button className="btn-sm danger" onClick={() => handleDelete(a.id)}>🗑️</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {agents.map(a => {
+                  const pct = a.budget_limit > 0 ? ((a.total_cost_usd || 0) / a.budget_limit) * 100 : 0;
+                  const isOverBudget = pct >= 90;
+                  return (
+                    <tr key={a.openclaw_agent_id}>
+                      <td className="p-3">{a.openclaw_agent_id}</td>
+                      <td className="p-3">{a.name}</td>
+                      <td className="p-3">{statusBadge(a.status || "idle")}</td>
+                      <td className="p-3">{a.tasks_done || 0}</td>
+                      <td className="p-3 text-soft">{timeAgo(a.last_heartbeat)}</td>
+                      <td className="p-3">
+                        <div className="flex items-center gap-1">
+                          {isOverBudget && <span className="animate-pulse text-red-500 text-xs">●</span>}
+                          <BudgetGauge cost={a.total_cost_usd || 0} limit={a.budget_limit || 0} />
+                        </div>
+                      </td>
+                      <td className="p-3 text-xs font-mono text-muted">
+                        {a.total_cost_usd != null ? `$${a.total_cost_usd.toFixed(4)}` : '—'}
+                      </td>
+                      <td className="p-3">
+                        <div className="flex gap-1">
+                          <button className="btn-sm" onClick={() => openEditModal(a)}>✏️</button>
+                          <button className="btn-sm danger" onClick={() => handleDelete(a.id)}>🗑️</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>}
@@ -193,6 +225,13 @@ export default function AgentsPage() {
                     <option value="paused">paused</option>
                   </select>
                 </div>
+                <hr style={{ borderColor: "var(--border)", margin: "12px 0" }} />
+                <h3>Budget</h3>
+                <div className="form-row">
+                  <label>Budget Limit ($)</label>
+                  <input type="number" min={0} step={0.01} value={formBudgetLimit} onChange={(e) => setFormBudgetLimit(+e.target.value)} placeholder="0 = no limit" />
+                </div>
+                <p className="text-xs text-muted mt-1">Actual cost is tracked automatically from task runs. Set a limit to receive alerts.</p>
                 <hr style={{ borderColor: "var(--border)", margin: "12px 0" }} />
                 <h3>Heartbeat</h3>
                 <div className="form-row">

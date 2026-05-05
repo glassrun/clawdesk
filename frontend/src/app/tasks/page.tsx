@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { getTasks, getAgents, getProjects, runTask, getTaskResults, deleteTask, createTask, updateTask, type Task, type Agent, type Project } from "@/lib/api";
 import { useStream } from "@/lib/useStream";
+import { TaskPanel } from "@/components/TaskPanel";
 
 function statusBadge(status: string) {
   const styles: Record<string, string> = {
@@ -52,6 +53,7 @@ export default function TasksPage() {
   const [taskResults, setTaskResults] = useState<Record<number, any[]>>({});
   const [runningTask, setRunningTask] = useState<number | null>(null);
   const [editTask, setEditTask] = useState<Task | null>(null);
+  const [panelTask, setPanelTask] = useState<Task | null>(null);
   const { lastMessage, connected } = useStream();
 
   // Form state
@@ -295,6 +297,7 @@ export default function TasksPage() {
                         <button className="btn-sm" onClick={() => handleRun(t.id)} disabled={runningTask === t.id}>
                           {runningTask === t.id ? "⏳" : "▶"}
                         </button>
+                        <button className="btn-sm" onClick={() => setPanelTask(t)} title="Watch live output">👁</button>
                         <button className="btn-sm" onClick={() => openEditModal(t)}>✏️</button>
                         <button className="btn-sm" onClick={() => toggleResults(t.id)}>📄</button>
                         <button className="btn-sm" onClick={() => handleDuplicate(t.id)}>📋</button>
@@ -415,6 +418,14 @@ export default function TasksPage() {
           </div>
         </div>
       </div>}
+    {panelTask && (
+      <TaskPanel
+        task={panelTask}
+        isRunning={runningTask === panelTask.id}
+        onClose={() => { setPanelTask(null); refreshData(); }}
+        onRun={(id) => { setRunningTask(id); }}
+      />
+    )}
     </div>
   );
 }

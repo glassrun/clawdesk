@@ -13,6 +13,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     if (req.query.agent_id) tasks = tasks.filter(t => String(t.assigned_agent_id) === String(req.query.agent_id));
     const byStatus = {}; const byPriority = {}; const byProject = {}; const byAgent = {};
     let totalRetries = 0;
+    const taskIds = new Set(tasks.map(t => t.id));
     for (const t of tasks) {
       byStatus[t.status] = (byStatus[t.status] || 0) + 1;
       byPriority[t.priority || 'medium'] = (byPriority[t.priority || 'medium'] || 0) + 1;
@@ -20,7 +21,12 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
       if (t.assigned_agent_id) byAgent[t.assigned_agent_id] = (byAgent[t.assigned_agent_id] || 0) + 1;
       if (t._retry_count) totalRetries += t._retry_count;
     }
-    res.json({ total: tasks.length, by_status: byStatus, by_priority: byPriority, by_project: byProject, by_agent: byAgent, total_retries: totalRetries });
+    // Aggregate cost from task_results for these tasks
+    const results = db.loadTaskResults().filter(r => taskIds.has(r.task_id));
+    const totalCost = results.reduce((s, r) => s + (r.cost || 0), 0);
+    const totalInputTokens = results.reduce((s, r) => s + (r.input_tokens || 0), 0);
+    const totalOutputTokens = results.reduce((s, r) => s + (r.output_tokens || 0), 0);
+    res.json({ total: tasks.length, by_status: byStatus, by_priority: byPriority, by_project: byProject, by_agent: byAgent, total_retries: totalRetries, total_cost_usd: parseFloat(totalCost.toFixed(6)), total_input_tokens: totalInputTokens, total_output_tokens: totalOutputTokens });
   });
 
   // Bulk task update
@@ -211,6 +217,15 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     db.remove('tasks', { id: t.id });
     broadcastTaskUpdate(db.loadTasks());
     res.json({ ok: true, soft_deleted: true, dependency_references_cleared: cleared });
+  });
+
+  router.get('/results-all', (req, res) => {
+    const results = db.loadTaskResults();
+    if (req.query.agent_id) {
+      const aid = +req.query.agent_id;
+      return res.json(results.filter(r => r.agent_id === aid));
+    }
+    res.json(results);
   });
 
   router.get('/:id/results', (req, res) => { res.json(db.loadTaskResults().filter(r => r.task_id === +req.params.id).sort((a, b) => b.id - a.id)); });

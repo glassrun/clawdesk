@@ -21,13 +21,19 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
       else if (t.status === 'done') taskCounts[t.assigned_agent_id].done++;
       else if (t.status === 'failed') taskCounts[t.assigned_agent_id].failed++;
     }
-    const result = agents.map(a => ({
-      ...a,
-      tasks_pending: taskCounts[a.id]?.pending || 0,
-      tasks_in_progress: taskCounts[a.id]?.in_progress || 0,
-      tasks_done: taskCounts[a.id]?.done || 0,
-      tasks_failed: taskCounts[a.id]?.failed || 0,
-    }));
+    const allResults = db.loadTaskResults();
+    const result = agents.map(a => {
+      const agentResults = allResults.filter(r => r.agent_id === a.id);
+      const totalCost = agentResults.reduce((s, r) => s + (r.cost || 0), 0);
+      return {
+        ...a,
+        tasks_pending: taskCounts[a.id]?.pending || 0,
+        tasks_in_progress: taskCounts[a.id]?.in_progress || 0,
+        tasks_done: taskCounts[a.id]?.done || 0,
+        tasks_failed: taskCounts[a.id]?.failed || 0,
+        total_cost_usd: parseFloat(totalCost.toFixed(6)),
+      };
+    });
     res.json(result);
   });
 
@@ -45,6 +51,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
       const agent = { id: nextId('agents'), openclaw_agent_id: agentId, name: title, status: status || 'idle', budget_limit: budget_limit || 0, budget_spent: 0, heartbeat_enabled: 1, heartbeat_interval: heartbeat_interval || 30, last_heartbeat: null, created_at: new Date().toISOString() };
       agents.push(agent);
       db.saveAgents(agents);
+      broadcastSSE('agents', { action: 'created', agent });
       res.status(201).json({ ...agent, openclaw: oc });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -61,6 +68,12 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     const lastHb = hbs.reduce((best, h) => (!best || h.id > best.id) ? h : best, null);
     const byStatus = {};
     for (const t of tasks) byStatus[t.status] = (byStatus[t.status] || 0) + 1;
+    // Aggregate usage / cost from task_results for this agent
+    const allResults = db.loadTaskResults().filter(r => r.agent_id === agent.id);
+    const totalInputTokens    = allResults.reduce((s, r) => s + (r.input_tokens  || 0), 0);
+    const totalOutputTokens   = allResults.reduce((s, r) => s + (r.output_tokens || 0), 0);
+    const totalCacheRead      = allResults.reduce((s, r) => s + (r.cache_read_tokens || 0), 0);
+    const totalCost           = allResults.reduce((s, r) => s + (r.cost || 0), 0);
     res.json({
       agent_id: agent.id, name: agent.name, openclaw_agent_id: agent.openclaw_agent_id,
       status: agent.status, heartbeat_enabled: !!agent.heartbeat_enabled,
@@ -68,7 +81,14 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
       tasks: { total: tasks.length, ...byStatus },
       projects: projectIds.map(pid => { const p = projects.find(x => x.id === pid); return { id: pid, title: p?.title || 'Unknown', tasks: tasks.filter(t => t.project_id === pid).length }; }),
       heartbeat_runs: hbs.length,
-      last_heartbeat_action: lastHb ? (() => { try { return JSON.parse(lastHb.action_taken); } catch { return { raw: lastHb.action_taken }; } })() : null
+      last_heartbeat_action: lastHb ? (() => { try { return JSON.parse(lastHb.action_taken); } catch { return { raw: lastHb.action_taken }; } })() : null,
+      usage: {
+        total_input_tokens:    totalInputTokens,
+        total_output_tokens:   totalOutputTokens,
+        total_cache_read_tokens: totalCacheRead,
+        total_cost_usd:        parseFloat(totalCost.toFixed(6)),
+        task_runs:             allResults.length,
+      },
     });
   });
 
@@ -90,6 +110,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     const { name, status, budget_limit, budget_spent, heartbeat_enabled, heartbeat_interval } = req.body;
     Object.assign(a, { name: name ?? a.name, status: status ?? a.status, budget_limit: budget_limit ?? a.budget_limit, budget_spent: budget_spent ?? a.budget_spent, heartbeat_enabled: heartbeat_enabled !== undefined ? (heartbeat_enabled ? 1 : 0) : a.heartbeat_enabled, heartbeat_interval: Math.max(1, +(heartbeat_interval ?? a.heartbeat_interval)) });
     db.saveAgents(agents);
+    broadcastSSE('agents', { action: 'updated', agent: a });
     res.json(a);
   });
 
@@ -110,6 +131,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     }
     db.hardDelete('tasks', { assigned_agent_id: agent.id });
     db.hardDelete('agents', { id: agent.id });
+    broadcastSSE('agents', { action: 'deleted', agent_id: agent.id });
     res.json({ ok: true, deleted: true });
   });
 

@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
-import { Inter, Geist } from "next/font/google";
+import { Geist } from "next/font/google";
 import "./globals.css";
 import { NavTabs } from "@/components/nav-tabs";
+import { ClientShell } from "@/components/ClientShell";
 
-const geist = Geist({subsets:['latin'],variable:'--font-sans'});
-
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+const geist = Geist({ subsets: ['latin'], variable: '--font-sans' });
 
 export const metadata: Metadata = {
   title: "ClawDesk — Agent Orchestration",
@@ -20,8 +19,10 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body>
-        <NavTabs />
-        {children}
+        <ClientShell>
+          <NavTabs />
+          {children}
+        </ClientShell>
       </body>
     </html>
   );

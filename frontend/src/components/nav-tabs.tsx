@@ -9,6 +9,8 @@ const tabs = [
   { href: "/projects", label: "📁 Projects" },
   { href: "/tasks", label: "📋 Tasks" },
   { href: "/heartbeats", label: "💓 Heartbeats" },
+  { href: "/audit", label: "📊 Audit" },
+  { href: "/billing", label: "💰 Billing" },
 ];
 
 export function NavTabs() {

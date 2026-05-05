@@ -1,12 +1,10 @@
 const path = require('path');
 const fs = require('fs');
-const { exec, spawn } = require('child_process');
+const { spawn } = require('child_process');
 const { nextId } = require('../db');
 const OPENCLAW_CLI = (() => {
   const val = process.env.OPENCLAW_CLI;
-  // If set to "1" or other obvious junk (from systemd/gateway env bleed), ignore it
   if (!val || val === '1' || !val.trim()) return 'openclaw';
-  // Accept if it looks like a path or starts with "openclaw"
   if (val.includes('/') || val.startsWith('openclaw')) return val.trim();
   return 'openclaw';
 })();
@@ -14,17 +12,61 @@ const OPENCLAW_NODE = process.env.OPENCLAW_NODE || '/usr/bin/node';
 const OPENCLAW_MODULE = process.env.OPENCLAW_MODULE || '/home/openclaw/.npm-global/lib/node_modules/openclaw/openclaw.mjs';
 const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3777}`;
 
-// Re-exported so routes can access without circular
-module.exports = { runOpenClawAgent, createOpenClawAgent, deleteOpenClawAgent, executeTask };
+// ===================== SSE CONTEXT FOR STREAMING =====================
+
+let _broadcastSSE = () => {};
+let _sseClients = new Map(); // taskId -> Set<Response>
+
+module.exports = {
+  setSSEContext(broadcastFn, clientsMap) {
+    _broadcastSSE = broadcastFn;
+    _sseClients = clientsMap || new Map();
+  },
+
+  broadcastTaskStream(taskId, chunk, type) {
+    const payload = JSON.stringify({ task_id: taskId, chunk, type, ts: Date.now() });
+    _broadcastSSE('task_output', { task_id: taskId, chunk, type });
+    const taskClients = _sseClients.get(taskId);
+    if (taskClients) {
+      for (const client of taskClients) {
+        try { client.write(`event: task_output\ndata: ${payload}\n\n`); } catch (e) { taskClients.delete(client); }
+      }
+    }
+  },
+
+  broadcastTaskDone(taskId, status) {
+    const payload = JSON.stringify({ task_id: taskId, status, ts: Date.now() });
+    _broadcastSSE('task_done', { task_id: taskId, status });
+    const taskClients = _sseClients.get(taskId);
+    if (taskClients) {
+      for (const client of taskClients) {
+        try { client.write(`event: task_done\ndata: ${payload}\n\n`); } catch (e) { taskClients.delete(client); }
+      }
+    }
+  },
+
+  // Re-export CLI wrappers
+  runOpenClawAgent,
+  createOpenClawAgent,
+  deleteOpenClawAgent,
+  executeTask,
+};
 
 // ===================== OPENCLAW AGENT CLI WRAPPERS =====================
 
-function runOpenClawAgent(agentId, message, cwd) {
+function runOpenClawAgent(agentId, message, cwd, onChunk) {
   return new Promise((resolve, reject) => {
     const child = spawn(OPENCLAW_CLI, ['agent', '--agent', agentId, '--message', message, '--json'], { cwd });
     let stdout = '', stderr = '';
-    child.stdout.on('data', d => stdout += d);
-    child.stderr.on('data', d => stderr += d);
+    child.stdout.on('data', d => {
+      const text = d.toString();
+      stdout += text;
+      if (onChunk) onChunk(text, 'stdout');
+    });
+    child.stderr.on('data', d => {
+      const text = d.toString();
+      if (onChunk) onChunk(text, 'stderr');
+    });
     child.on('error', err => reject(new Error('spawn error: ' + err.message)));
     child.on('close', code => {
       let result = null;
@@ -43,33 +85,23 @@ function runOpenClawAgent(agentId, message, cwd) {
 function createOpenClawAgent(agentId, name, workspace, opts = {}) {
   return new Promise((resolve, reject) => {
     const wsDir = workspace || path.join(process.env.HOME, `.openclaw/workspace-${agentId}`);
-
-    // Use spawnSync with shell:true + inherit — only pattern that works with the CLI's
-    // gateway RPC (other stdio modes cause it to exit with code 1)
     const { spawnSync } = require('child_process');
     const cmd = `${OPENCLAW_CLI} agents add "${agentId}" --non-interactive --workspace "${wsDir}" --json`;
     const result = spawnSync(cmd, { shell: true });
     const output = (result.stdout || '').toString() + (result.stderr || '').toString();
-
-    // Only create workspace files and resolve if CLI succeeded
     if (result.status !== 0 && !output.includes('already exists')) {
       reject(new Error(`Failed: exit ${result.status}\n${output.substring(0, 500)}`));
       return;
     }
-
-    // CLI succeeded — create identity files
     fs.mkdirSync(wsDir, { recursive: true });
     const emoji = opts.emoji || '🤖';
     const vibe = opts.vibe || 'helpful and focused';
     fs.writeFileSync(path.join(wsDir, 'IDENTITY.md'), `# IDENTITY.md\n\n- **Name:** ${name}\n- **Role:** ${vibe}\n- **Creature:** AI agent\n- **Vibe:** ${vibe.split('.').filter(s=>s.trim())[0].split(',').slice(0,2).map(s=>s.trim()).join(', ') || 'focused and effective'}\n- **Emoji:** ${emoji}\n`);
     fs.writeFileSync(path.join(wsDir, 'SOUL.md'), `# SOUL.md\n\nYou are ${name}. ${vibe}. Be resourceful, direct, and actually do the work - don't just say you did.\n`);
     fs.writeFileSync(path.join(wsDir, 'USER.md'), `# USER.md\n\nS is your operator. Listen carefully. Execute precisely. No filler.\n`);
-
-    // set-identity — same pattern
     const idCmd = `${OPENCLAW_CLI} agents set-identity --agent "${agentId}" --name "${name.replace(/"/g, '\\"')}" --json`;
     const idResult = spawnSync(idCmd, { shell: true });
     if (idResult.status !== 0) console.log(`[createOpenClawAgent] set-identity: ${idResult.stderr.toString().substring(0, 200)}`);
-
     resolve({ agentId, workspace: wsDir, output: output.substring(0, 500) });
   });
 }
@@ -172,15 +204,61 @@ async function executeTask(agent, task) {
   }
 
   const startTime = Date.now();
+
+  // Streaming callback — broadcasts chunks to SSE as they arrive
+  const onChunk = (data, type) => {
+    module.exports.broadcastTaskStream(task.id, data, type);
+  };
+
   try {
-    const result = await runOpenClawAgent(agent.openclaw_agent_id, message, undefined);
+    const result = await runOpenClawAgent(agent.openclaw_agent_id, message, undefined, onChunk);
     const durationMs = Date.now() - startTime;
     const output = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
 
+    // ── Token / cost tracking ─────────────────────────────────────────────
+    // Read usage from the agent's sessions.json (written by OpenClaw after each run)
+    let usage = { inputTokens: 0, outputTokens: 0, cacheRead: 0, totalTokens: 0, estimatedCostUsd: 0 };
+    try {
+      const agentDir = path.join(require('os').homedir(), '.openclaw', 'agents', agent.openclaw_agent_id);
+      const sessionsFile = path.join(agentDir, 'sessions', 'sessions.json');
+      if (require('fs').existsSync(sessionsFile)) {
+        const sessionsData = JSON.parse(require('fs').readFileSync(sessionsFile, 'utf8'));
+        // Find the most recent session (by lastInteractionAt)
+        let best = null;
+        for (const [key, sess] of Object.entries(sessionsData)) {
+          if (sess.lastInteractionAt && (!best || sess.lastInteractionAt > best.lastInteractionAt)) best = sess;
+        }
+        if (best) {
+          usage.inputTokens    = best.inputTokens    || 0;
+          usage.outputTokens   = best.outputTokens   || 0;
+          usage.cacheRead      = best.cacheRead      || 0;
+          usage.totalTokens    = best.totalTokens    || 0;
+          usage.estimatedCostUsd = best.estimatedCostUsd || 0;
+        }
+      }
+    } catch (e) {
+      // Non-fatal — usage tracking is best-effort
+      console.log(`[executor] usage tracking: ${e.message}`);
+    }
+
     const { setTaskStatus } = require('./heartbeat');
     setTaskStatus(task.id, 'done');
+    module.exports.broadcastTaskDone(task.id, 'done');
     const results = db.loadTaskResults();
-    const resultObj = { id: nextId('task_results'), task_id: task.id, agent_id: agent.id, input: message, output, duration_ms: durationMs, executed_at: new Date().toISOString() };
+    const resultObj = {
+      id: nextId('task_results'),
+      task_id: task.id,
+      agent_id: agent.id,
+      input: message,
+      output,
+      duration_ms: durationMs,
+      executed_at: new Date().toISOString(),
+      input_tokens:  usage.inputTokens,
+      output_tokens: usage.outputTokens,
+      cache_read_tokens: usage.cacheRead,
+      total_tokens:  usage.totalTokens,
+      cost:          usage.estimatedCostUsd,
+    };
     if (createdAgentInfo) resultObj.created_agent = createdAgentInfo;
     results.push(resultObj);
     db.saveTaskResults(results);
@@ -191,8 +269,22 @@ async function executeTask(agent, task) {
     const durationMs = Date.now() - startTime;
     const { setTaskStatus } = require('./heartbeat');
     setTaskStatus(task.id, 'failed');
+    module.exports.broadcastTaskDone(task.id, 'failed');
     const results = db.loadTaskResults();
-    const resultObj = { id: nextId('task_results'), task_id: task.id, agent_id: agent.id, input: message, output: `Error: ${err.message}`, duration_ms: durationMs, executed_at: new Date().toISOString() };
+    const resultObj = {
+      id: nextId('task_results'),
+      task_id: task.id,
+      agent_id: agent.id,
+      input: message,
+      output: `Error: ${err.message}`,
+      duration_ms: durationMs,
+      executed_at: new Date().toISOString(),
+      input_tokens:  0,
+      output_tokens: 0,
+      cache_read_tokens: 0,
+      total_tokens:  0,
+      cost:          0,
+    };
     if (createdAgentInfo) resultObj.created_agent = createdAgentInfo;
     results.push(resultObj);
     db.saveTaskResults(results);

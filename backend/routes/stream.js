@@ -10,4 +10,9 @@ module.exports = function(router, { sseClients, broadcastSSE }) {
     sseClients.add(res);
     req.on('close', () => sseClients.delete(res));
   });
+
+  // Named-event helper used by other routes to broadcast to all SSE clients
+  router.broadcast = (event, data) => {
+    broadcastSSE(event, data);
+  };
 };
