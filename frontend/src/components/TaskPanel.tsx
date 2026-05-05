@@ -19,11 +19,12 @@ interface TaskPanelProps {
   isRunning: boolean;
   onClose: () => void;
   onRun: (taskId: number) => void;
+  onDone: (taskId: number) => void;
 }
 
 type RunStatus = "idle" | "running" | "done" | "failed";
 
-export function TaskPanel({ task, isRunning, onClose, onRun }: TaskPanelProps) {
+export function TaskPanel({ task, isRunning, onClose, onRun, onDone }: TaskPanelProps) {
   const [status, setStatus] = useState<RunStatus>(isRunning ? "running" : "idle");
   const [output, setOutput] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +69,7 @@ export function TaskPanel({ task, isRunning, onClose, onRun }: TaskPanelProps) {
           });
         }
         setStatus("done");
+      onDone(task.id);
       } else {
         setOutput(results[0]?.output || "(no result recorded)");
         setStatus(results[0]?.status === "failed" ? "failed" : "done");
@@ -75,6 +77,7 @@ export function TaskPanel({ task, isRunning, onClose, onRun }: TaskPanelProps) {
     } catch (e: any) {
       setError(e.message || "Run failed");
       setStatus("failed");
+      onDone(task.id);
     }
   };
 

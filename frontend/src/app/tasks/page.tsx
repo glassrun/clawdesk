@@ -424,6 +424,7 @@ export default function TasksPage() {
         isRunning={runningTask === panelTask.id}
         onClose={() => { setPanelTask(null); refreshData(); }}
         onRun={(id) => { setRunningTask(id); }}
+          onDone={(id) => { setRunningTask(null); }}
       />
     )}
     </div>
