@@ -27,7 +27,7 @@ process.on('uncaughtException', (err) => {
 
 // ===================== Schema version / Migrations =====================
 
-const CURRENT_VERSION = 4;
+const CURRENT_VERSION = 7;
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS _changelog (
@@ -79,7 +79,10 @@ db.exec(`
     completion_pct   REAL    DEFAULT 0,
     created_at      TEXT    NOT NULL,
     deleted_at      TEXT,
-    updated_at      TEXT
+    updated_at      TEXT,
+    is_template     INTEGER DEFAULT 0,
+    template_source_id INTEGER,
+    trigger_rules   TEXT    DEFAULT '[]'
   );
 
   CREATE TABLE IF NOT EXISTS tasks (
@@ -101,7 +104,9 @@ db.exec(`
     _status_changed_at  TEXT,
     deleted_at          TEXT,
     updated_at          TEXT,
-    repeat              INTEGER DEFAULT 0
+    repeat              INTEGER DEFAULT 0,
+    scheduled_at        TEXT,
+    requires_approval   INTEGER DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS heartbeats (
@@ -128,6 +133,28 @@ db.exec(`
     cache_read_tokens INTEGER DEFAULT 0,
     total_tokens     INTEGER DEFAULT 0,
     cost              REAL    DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS approvals (
+    id              INTEGER PRIMARY KEY,
+    task_id         INTEGER NOT NULL,
+    status          TEXT    DEFAULT 'pending',
+    requested_at    TEXT    NOT NULL,
+    resolved_at     TEXT,
+    resolved_by     TEXT,
+    notes           TEXT    DEFAULT ''
+  );
+
+  CREATE TABLE IF NOT EXISTS workflow_runs (
+    id              INTEGER PRIMARY KEY,
+    project_id      INTEGER NOT NULL,
+    title           TEXT    NOT NULL,
+    status          TEXT    DEFAULT 'running',
+    created_at      TEXT    NOT NULL,
+    completed_at    TEXT,
+    steps           TEXT    DEFAULT '[]',
+    current_step    INTEGER DEFAULT 0,
+    context         TEXT    DEFAULT '{}'
   );
 `);
 
@@ -180,6 +207,57 @@ function runMigrations() {
       addCol('task_results', 'cache_read_tokens','INTEGER DEFAULT 0');
       addCol('task_results', 'total_tokens',     'INTEGER DEFAULT 0');
       addCol('task_results', 'cost',             'REAL DEFAULT 0');
+    },
+    // v6: add scheduled_at and requires_approval to tasks, add trigger_rules to projects
+    () => {
+      const addCol = (table, col, type) => {
+        try {
+          const existing = db.prepare(`PRAGMA table_info(${table})`).all().map(r => r.name);
+          if (!existing.includes(col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
+        } catch (e) {}
+      };
+      addCol('tasks', 'scheduled_at',     'TEXT');
+      addCol('tasks', 'requires_approval','INTEGER DEFAULT 0');
+      addCol('projects', 'trigger_rules', "TEXT DEFAULT '[]'");
+    },
+    // v7: add approvals table and workflow_runs table
+    () => {
+      const addCol = (table, col, type) => {
+        try {
+          const existing = db.prepare(`PRAGMA table_info(${table})`).all().map(r => r.name);
+          if (!existing.includes(col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
+        } catch (e) {}
+      };
+      db.exec(`CREATE TABLE IF NOT EXISTS approvals (
+        id              INTEGER PRIMARY KEY,
+        task_id         INTEGER NOT NULL,
+        status          TEXT    DEFAULT 'pending',
+        requested_at    TEXT    NOT NULL,
+        resolved_at     TEXT,
+        resolved_by     TEXT,
+        notes           TEXT    DEFAULT ''
+      )`);
+      db.exec(`CREATE TABLE IF NOT EXISTS workflow_runs (
+        id              INTEGER PRIMARY KEY,
+        project_id      INTEGER NOT NULL,
+        title           TEXT    NOT NULL,
+        status          TEXT    DEFAULT 'running',
+        created_at      TEXT    NOT NULL,
+        completed_at    TEXT,
+        steps           TEXT    DEFAULT '[]',
+        current_step    INTEGER DEFAULT 0,
+        context         TEXT    DEFAULT '{}'
+      )`);
+    },
+    // v8: add tools_used to task_results
+    () => {
+      const addCol = (table, col, type) => {
+        try {
+          const existing = db.prepare(`PRAGMA table_info(${table})`).all().map(r => r.name);
+          if (!existing.includes(col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
+        } catch (e) {}
+      };
+      addCol('task_results', 'tools_used', 'TEXT');
     },
   ];
 
@@ -307,16 +385,16 @@ function insertAgent(a) {
 function loadProjects()    { return db.prepare("SELECT * FROM projects WHERE deleted_at IS NULL").all(); }
 function saveProjects(data) {
   db.exec("DELETE FROM projects");
-  const ins = db.prepare(`INSERT INTO projects (id,title,description,workspace_path,status,task_total,task_done,completion_pct,created_at,deleted_at,updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?)`);
-  for (const p of data) ins.run(p.id,p.title,p.description,p.workspace_path,p.status,p.task_total,p.task_done,p.completion_pct,p.created_at,p.deleted_at||null,p.updated_at||null);
+  const ins = db.prepare(`INSERT INTO projects (id,title,description,workspace_path,status,task_total,task_done,completion_pct,created_at,deleted_at,updated_at,is_template,template_source_id,trigger_rules)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+  for (const p of data) ins.run(p.id,p.title,p.description,p.workspace_path,p.status,p.task_total,p.task_done,p.completion_pct,p.created_at,p.deleted_at||null,p.updated_at||null,p.is_template||0,p.template_source_id||null,typeof p.trigger_rules==='string'?p.trigger_rules:(JSON.stringify(p.trigger_rules||[])));
 }
 function insertProject(p) {
   const id = nextId('projects');
   const now = new Date().toISOString();
-  db.prepare(`INSERT INTO projects (id,title,description,workspace_path,status,task_total,task_done,completion_pct,created_at)
-    VALUES (?,?,?,?,?,?,?,?,?)`)
-    .run(id, p.title||'', p.description||'', p.workspace_path||'', p.status||'active', 0, 0, 0, now);
+  db.prepare(`INSERT INTO projects (id,title,description,workspace_path,status,task_total,task_done,completion_pct,created_at,is_template,template_source_id,trigger_rules)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(id, p.title||'', p.description||'', p.workspace_path||'', p.status||'active', 0, 0, 0, now, p.is_template?1:0, p.template_source_id||null, typeof p.trigger_rules==='string'?p.trigger_rules:JSON.stringify(p.trigger_rules||[]));
   return id;
 }
 
@@ -325,9 +403,9 @@ function insertProject(p) {
 function loadTasks()    { return db.prepare("SELECT * FROM tasks WHERE deleted_at IS NULL").all(); }
 function saveTasks(data) {
   db.exec("DELETE FROM tasks");
-  const ins = db.prepare(`INSERT INTO tasks (id,project_id,assigned_agent_id,title,description,status,priority,dependency_id,dependency_ids,creates_agent,created_by_agent_id,created_at,completed_at,run_count,_retry_count,_status_changed_at,deleted_at,updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
-  for (const t of data) ins.run(t.id,t.project_id,t.assigned_agent_id||null,t.title,t.description,t.status,t.priority,t.dependency_id||null,Array.isArray(t.dependency_ids)?JSON.stringify(t.dependency_ids):(t.dependency_ids||null),t.creates_agent||null,t.created_by_agent_id||null,t.created_at,t.completed_at||null,t.run_count||0,t._retry_count||0,t._status_changed_at||null,t.deleted_at||null,t.updated_at||null);
+  const ins = db.prepare(`INSERT INTO tasks (id,project_id,assigned_agent_id,title,description,status,priority,dependency_id,dependency_ids,creates_agent,created_by_agent_id,created_at,completed_at,run_count,_retry_count,_status_changed_at,deleted_at,updated_at,repeat,scheduled_at,requires_approval)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+  for (const t of data) ins.run(t.id,t.project_id,t.assigned_agent_id||null,t.title,t.description,t.status,t.priority,t.dependency_id||null,Array.isArray(t.dependency_ids)?JSON.stringify(t.dependency_ids):(t.dependency_ids||null),t.creates_agent||null,t.created_by_agent_id||null,t.created_at,t.completed_at||null,t.run_count||0,t._retry_count||0,t._status_changed_at||null,t.deleted_at||null,t.updated_at||null,t.repeat||0,t.scheduled_at||null,t.requires_approval?1:0);
 }
 function insertTask(t) {
   const id = nextId('tasks');
@@ -335,11 +413,12 @@ function insertTask(t) {
   const depIds = t.dependency_ids
     ? (Array.isArray(t.dependency_ids) ? JSON.stringify(t.dependency_ids) : t.dependency_ids)
     : null;
-  db.prepare(`INSERT INTO tasks (id,project_id,assigned_agent_id,title,description,status,priority,dependency_id,dependency_ids,creates_agent,created_by_agent_id,created_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+  db.prepare(`INSERT INTO tasks (id,project_id,assigned_agent_id,title,description,status,priority,dependency_id,dependency_ids,creates_agent,created_by_agent_id,created_at,scheduled_at,requires_approval)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(id, t.project_id, t.assigned_agent_id||null, t.title, t.description||'',
          t.status||'pending', t.priority||'medium', t.dependency_id||null, depIds,
-         t.creates_agent||null, t.created_by_agent_id||null, now);
+         t.creates_agent||null, t.created_by_agent_id||null, now,
+         t.scheduled_at||null, t.requires_approval?1:0);
   return id;
 }
 function insertTaskBatch(batch) {
@@ -351,11 +430,12 @@ function insertTaskBatch(batch) {
     const depIds = t.dependency_ids
       ? (Array.isArray(t.dependency_ids) ? JSON.stringify(t.dependency_ids) : t.dependency_ids)
       : null;
-    db.prepare(`INSERT INTO tasks (id,project_id,assigned_agent_id,title,description,status,priority,dependency_id,dependency_ids,creates_agent,created_by_agent_id,created_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+    db.prepare(`INSERT INTO tasks (id,project_id,assigned_agent_id,title,description,status,priority,dependency_id,dependency_ids,creates_agent,created_by_agent_id,created_at,scheduled_at,requires_approval)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(id, t.project_id, t.assigned_agent_id||null, t.title, t.description||'',
            t.status||'pending', t.priority||'medium', t.dependency_id||null, depIds,
-           t.creates_agent||null, t.created_by_agent_id||null, now);
+           t.creates_agent||null, t.created_by_agent_id||null, now,
+           t.scheduled_at||null, t.requires_approval?1:0);
     results.push(id);
   }
   return results;
@@ -365,6 +445,51 @@ function updateTask(id, changes) {
   const keys = Object.keys(changes).filter(k => k !== 'deleted_at');
   const set = keys.map(k => `${k} = ?`).join(', ');
   db.prepare(`UPDATE tasks SET ${set} WHERE id = ?`).run(...keys.map(k => changes[k]), id);
+}
+
+// ===================== Approvals =====================
+
+function loadApprovals()    { return db.prepare("SELECT * FROM approvals").all(); }
+function saveApprovals(data) {
+  db.exec("DELETE FROM approvals");
+  const ins = db.prepare(`INSERT INTO approvals (id,task_id,status,requested_at,resolved_at,resolved_by,notes)
+    VALUES (?,?,?,?,?,?,?)`);
+  for (const a of data) ins.run(a.id,a.task_id,a.status||'pending',a.requested_at,a.resolved_at||null,a.resolved_by||null,a.notes||'');
+}
+function insertApproval(a) {
+  const id = nextId('approvals');
+  db.prepare(`INSERT INTO approvals (id,task_id,status,requested_at,resolved_at,resolved_by,notes)
+    VALUES (?,?,?,?,?,?,?)`)
+    .run(id, a.task_id, a.status||'pending', a.requested_at, a.resolved_at||null, a.resolved_by||null, a.notes||'');
+  return id;
+}
+
+// ===================== Workflow Runs =====================
+
+function loadWorkflowRuns()    { return db.prepare("SELECT * FROM workflow_runs").all(); }
+function saveWorkflowRuns(data) {
+  db.exec("DELETE FROM workflow_runs");
+  const ins = db.prepare(`INSERT INTO workflow_runs (id,project_id,title,status,created_at,completed_at,steps,current_step,context)
+    VALUES (?,?,?,?,?,?,?,?,?)`);
+  for (const w of data) ins.run(w.id,w.project_id,w.title,w.status||'running',w.created_at,w.completed_at||null,typeof w.steps==='string'?w.steps:JSON.stringify(w.steps||[]),w.current_step||0,typeof w.context==='string'?w.context:JSON.stringify(w.context||{}));
+}
+function insertWorkflowRun(w) {
+  const id = nextId('workflow_runs');
+  db.prepare(`INSERT INTO workflow_runs (id,project_id,title,status,created_at,completed_at,steps,current_step,context)
+    VALUES (?,?,?,?,?,?,?,?,?)`)
+    .run(id, w.project_id, w.title, w.status||'running', w.created_at||new Date().toISOString(), w.completed_at||null,
+         typeof w.steps==='string'?w.steps:JSON.stringify(w.steps||[]),
+         w.current_step||0,
+         typeof w.context==='string'?w.context:JSON.stringify(w.context||{}));
+  return id;
+}
+function updateWorkflowRun(id, changes) {
+  const keys = Object.keys(changes).filter(k => k !== 'id');
+  const set = keys.map(k => `${k} = ?`).join(', ');
+  db.prepare(`UPDATE workflow_runs SET ${set} WHERE id = ?`).run(...keys.map(k => {
+    if (['steps','context'].includes(k) && typeof changes[k] !== 'string') return JSON.stringify(changes[k]);
+    return changes[k];
+  }), id);
 }
 
 // ===================== Heartbeats =====================
@@ -393,15 +518,15 @@ function saveTaskResults(data) {
   const MAX = 500;
   const trimmed = data.slice(-MAX);
   db.exec("DELETE FROM task_results");
-  const ins = db.prepare(`INSERT INTO task_results (id,task_id,agent_id,input,output,duration_ms,executed_at,created_agent,input_tokens,output_tokens,cache_read_tokens,total_tokens,cost)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`);
-  for (const r of trimmed) ins.run(r.id,r.task_id,r.agent_id||null,r.input||'',r.output||'',r.duration_ms||0,r.executed_at,r.created_agent||'',r.input_tokens||0,r.output_tokens||0,r.cache_read_tokens||0,r.total_tokens||0,r.cost||0);
+  const ins = db.prepare(`INSERT INTO task_results (id,task_id,agent_id,input,output,duration_ms,executed_at,created_agent,input_tokens,output_tokens,cache_read_tokens,total_tokens,cost,tools_used)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+  for (const r of trimmed) ins.run(r.id,r.task_id,r.agent_id||null,r.input||'',r.output||'',r.duration_ms||0,r.executed_at,r.created_agent||'',r.input_tokens||0,r.output_tokens||0,r.cache_read_tokens||0,r.total_tokens||0,r.cost||0,r.tools_used||null);
 }
 function insertTaskResult(r) {
   const id = nextId('task_results');
-  db.prepare(`INSERT INTO task_results (id,task_id,agent_id,input,output,duration_ms,executed_at,created_agent,input_tokens,output_tokens,cache_read_tokens,total_tokens,cost)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-    .run(id, r.task_id, r.agent_id||null, r.input||'', r.output||'', r.duration_ms||0, r.executed_at||new Date().toISOString(), r.created_agent||'', r.input_tokens||0, r.output_tokens||0, r.cache_read_tokens||0, r.total_tokens||0, r.cost||0);
+  db.prepare(`INSERT INTO task_results (id,task_id,agent_id,input,output,duration_ms,executed_at,created_agent,input_tokens,output_tokens,cache_read_tokens,total_tokens,cost,tools_used)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(id, r.task_id, r.agent_id||null, r.input||'', r.output||'', r.duration_ms||0, r.executed_at||new Date().toISOString(), r.created_agent||'', r.input_tokens||0, r.output_tokens||0, r.cache_read_tokens||0, r.total_tokens||0, r.cost||0, r.tools_used||null);
   return id;
 }
 
@@ -468,6 +593,13 @@ module.exports = {
   loadTaskResults,
   saveTaskResults,
   insertTaskResult,
+  loadApprovals,
+  saveApprovals,
+  insertApproval,
+  loadWorkflowRuns,
+  saveWorkflowRuns,
+  insertWorkflowRun,
+  updateWorkflowRun,
   vacuumDb,
   getDbStats,
   clearDeleted,

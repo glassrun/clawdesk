@@ -185,6 +185,11 @@ function setTaskStatus(taskId, newStatus) {
 const executor = require('./services/executor');
 executor.setSSEContext(broadcastSSE, taskSseClients);
 
+const scheduler = require('./services/scheduler');
+scheduler.setBroadcastSSE(broadcastSSE);
+scheduler.setSetTaskStatus(setTaskStatus);
+scheduler.startScheduler(30000);
+
 const heartbeat = require('./services/heartbeat');
 heartbeat.setBroadcastSSE(broadcastSSE);
 heartbeat.setSetTaskStatus(setTaskStatus);
@@ -201,6 +206,7 @@ app.get('/api', (req, res) => {
       agents: ['GET /api/agents', 'POST /api/agents', 'GET /api/agents/:id', 'PUT /api/agents/:id', 'DELETE /api/agents/:id', 'GET /api/agents/:id/stats', 'GET /api/agents/:id/tasks', 'POST /api/agents/:id/heartbeat', 'POST /api/agents/id/reactivate', 'POST /api/agents/sync'],
       projects: ['GET /api/projects', 'POST /api/projects', 'GET /api/projects/:id', 'PUT /api/projects/:id', 'DELETE /api/projects/:id', 'GET /api/projects/:id/stats', 'GET /api/projects/:id/tasks', 'POST /api/projects/:id/tasks', 'POST /api/projects/:id/tasks/from-agent', 'POST /api/projects/:id/reopen'],
       tasks: ['GET /api/tasks', 'GET /api/tasks/summary', 'GET /api/tasks/:id', 'PUT /api/tasks/:id', 'DELETE /api/tasks/:id', 'GET /api/tasks/:id/results', 'GET /api/tasks/:id/history', 'GET /api/tasks/:id/chain', 'GET /api/tasks/:id/dependents', 'POST /api/tasks/:id/run', 'POST /api/tasks/:id/retry', 'POST /api/tasks/:id/cancel', 'POST /api/tasks/:id/duplicate', 'POST /api/tasks/:id/assign', 'POST /api/tasks/:id/notes', 'POST /api/tasks/bulk'],
+      tools: ['GET /api/tools', 'GET /api/tools/:name', 'PATCH /api/tools/:name'],
       heartbeats: ['GET /api/heartbeats', 'POST /api/heartbeats/tick'],
       system: ['GET /api/system/stats', 'POST /api/system/cleanup', 'POST /api/system/vacuum'],
       dashboard: ['GET /api/dashboard']
@@ -244,6 +250,15 @@ app.use('/api/system', systemRouter);
 const heartbeatsRouter = express.Router();
 require('./routes/heartbeats')(heartbeatsRouter, { db, runHeartbeatCycle: heartbeat.runHeartbeatCycle });
 app.use('/api/heartbeats', heartbeatsRouter);
+
+const approvalsRouter = express.Router();
+require('./routes/approvals')(approvalsRouter, { db });
+app.use('/api/approvals', approvalsRouter);
+
+// Tools registry route
+const toolsRouter = express.Router();
+require('./routes/tools')(toolsRouter, { db });
+app.use('/api/tools', toolsRouter);
 
 // Health endpoints
 app.get('/health/ready', (req, res) => { res.json({ status: 'ready', timestamp: new Date().toISOString() }); });

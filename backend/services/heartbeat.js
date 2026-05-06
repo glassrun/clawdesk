@@ -83,7 +83,7 @@ function isTaskSatisfied(task, tasks) {
   return true;
 }
 
-  const pending = tasks.filter(t => t.assigned_agent_id === agent.id && t.status === 'pending' && isTaskSatisfied(t, tasks)).sort((a, b) => {
+  const pending = tasks.filter(t => t.assigned_agent_id === agent.id && t.status === 'pending' && isTaskSatisfied(t, tasks) && !t.scheduled_at).sort((a, b) => {
     const pri = { high: 0, medium: 1, low: 2 };
     const pa = pri[a.priority] ?? 1, pb = pri[b.priority] ?? 1;
     return pa !== pb ? pa - pb : a.id - b.id;

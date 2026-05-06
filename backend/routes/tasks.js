@@ -122,7 +122,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     const taskId = +req.params.id;
     const t = tasks.find(x => x.id === taskId);
     if (!t) return res.status(404).json({ error: 'not found' });
-    const { assigned_agent_id, title, description, status, dependency_id, dependency_ids, creates_agent, created_by_agent_id, priority, repeat } = req.body;
+    const { assigned_agent_id, title, description, status, dependency_id, dependency_ids, creates_agent, created_by_agent_id, priority, repeat, scheduled_at, requires_approval } = req.body;
     const resolveDepId = (v) => {
       if (v === '' || v === null || v === undefined) return null;
       if (typeof v === 'string') v = v.trim();
@@ -180,7 +180,9 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
       creates_agent: creates_agent !== undefined ? creates_agent : t.creates_agent,
       created_by_agent_id: created_by_agent_id !== undefined ? created_by_agent_id : t.created_by_agent_id,
       priority: priority ?? t.priority,
-      repeat: repeat !== undefined ? repeat : t.repeat
+      repeat: repeat !== undefined ? repeat : t.repeat,
+      scheduled_at: scheduled_at !== undefined ? scheduled_at : t.scheduled_at,
+      requires_approval: requires_approval !== undefined ? (requires_approval ? 1 : 0) : t.requires_approval
     });
     if (status && status !== oldStatus) {
       t._status_changed_at = new Date().toISOString();

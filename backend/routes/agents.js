@@ -152,4 +152,61 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     db.saveAgents(agents);
     res.json({ ok: true, id: a.id, name: a.name, status: a.status });
   });
+
+  // GET /api/agents/:id/capabilities — return tools and skills available to this agent
+  router.get('/:id/capabilities', (req, res) => {
+    const agent = db.loadAgents().find(x => x.id === +req.params.id);
+    if (!agent) return res.status(404).json({ error: 'not found' });
+
+    // Read CAPABILITIES.md from agent's workspace if it exists
+    const fs = require('fs');
+    const path = require('path');
+    const agentWorkspace = path.join(process.env.HOME, '.openclaw', 'agents', agent.openclaw_agent_id);
+    const capFile = path.join(agentWorkspace, 'CAPABILITIES.md');
+
+    let capabilities = { tools: [], skills: [], raw: null };
+
+    if (fs.existsSync(capFile)) {
+      try {
+        const content = fs.readFileSync(capFile, 'utf8');
+        capabilities.raw = content;
+
+        // Parse tool entries (simple line-based extraction)
+        const toolMatches = content.match(/(?:^|\n)###?\s*(?:tool|skill):?\s*(\w+)/gi);
+        if (toolMatches) {
+          for (const m of toolMatches) {
+            const name = m.replace(/^###?\s*(?:tool|skill):?\s*/i, '').trim();
+            const lower = name.toLowerCase();
+            if (lower && !capabilities.tools.includes(lower)) capabilities.tools.push(lower);
+          }
+        }
+
+        // Also collect any lines that just mention tool names at start of line
+        const allToolNames = ['read', 'write', 'exec', 'web_search', 'web_fetch', 'image', 'video', 'music'];
+        for (const t of allToolNames) {
+          const regex = new RegExp(`(^|\n)\s*[-*\u2022]\s*${t}\b`, 'i');
+          if (regex.test(content) && !capabilities.tools.includes(t)) {
+            capabilities.tools.push(t);
+          }
+        }
+      } catch (e) {
+        return res.status(500).json({ error: 'failed to parse CAPABILITIES.md: ' + e.message });
+      }
+    }
+
+    // Always include the base toolset from tool-registry
+    const { getAllTools } = require('../services/tool-registry');
+    const allTools = getAllTools();
+    const availableTools = allTools.filter(t => t.enabled).map(t => t.name);
+
+    res.json({
+      agent_id: agent.id,
+      openclaw_agent_id: agent.openclaw_agent_id,
+      available_tools: availableTools,
+      declared_tools: capabilities.tools,
+      declared_skills: capabilities.skills,
+      capabilities_file: fs.existsSync(capFile),
+      raw: capabilities.raw,
+    });
+  });
 };
