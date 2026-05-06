@@ -328,6 +328,35 @@ app.use((err, req, res, _next) => {
 
 // ===================== SERVER START =====================
 
+// Restart endpoint — starts a fresh server, gracefully exits this one
+app.post('/api/admin/restart', (req, res) => {
+  res.json({ status: 'restarting', message: 'new server starting, this instance will exit shortly' });
+  // Spawn new server in background, wait for it to grab the port, then exit
+  const restartScript = `
+    const net = require('net');
+    const { spawn } = require('child_process');
+    const newServer = spawn('node', ['server.js'], { cwd: '/home/openclaw/.openclaw/workspace/clawdesk/backend', detached: true, stdio: 'ignore' });
+    newServer.unref();
+    // Wait for port to be bound (new server ready), max 10s
+    const deadline = Date.now() + 10000;
+    const tryConnect = () => {
+      const sock = net.createConnection(${PORT}, 'localhost');
+      sock.setTimeout(500);
+      sock.on('connect', () => { sock.destroy(); process.exit(0); });
+      sock.on('error', () => {
+        if (Date.now() > deadline) { process.exit(1); }
+        setTimeout(tryConnect, 200);
+      });
+      sock.on('timeout', () => { sock.destroy(); setTimeout(tryConnect, 200); });
+    };
+    tryConnect();
+  `;
+  const child = spawn('node', ['-e', restartScript], { stdio: 'ignore' });
+  child.unref();
+  // Give new server time to start, then graceful exit
+  setTimeout(() => { server.close(() => process.exit(0)); }, 3000);
+});
+
 const server = app.listen(PORT, () => {
   console.log(`ClawDesk running on http://localhost:${PORT}`);
   syncFromOpenClaw().then(r => { console.log(`[Init] Synced ${r.synced.length} agent(s) from OpenClaw (source: ${r.source})`); }).catch(e => { console.log(`[Init] OpenClaw sync failed: ${e.message}`); });

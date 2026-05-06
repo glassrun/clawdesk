@@ -1,7 +1,6 @@
 #!/bin/bash
 # deploy.sh — deploy ClawDesk backend
-# Usage: ./deploy.sh [staging|production]
-# Defaults to staging (local restart).
+# Usage: ./deploy.sh
 
 set -e
 
@@ -22,4 +21,22 @@ cd backend && npm install --silent && cd ..
 echo ">>> Running smoke test..."
 node backend/tests/smoke.test.js
 
-echo ">>> All checks passed. Deploy complete."
+echo ">>> Starting new server..."
+cd /home/openclaw/.openclaw/workspace/clawdesk/backend && node server.js &
+NEW_PID=$!
+
+# Wait for new server to be ready
+echo ">>> Waiting for new server to be ready..."
+for i in $(seq 1 20); do
+  if curl -sf http://localhost:3777/health > /dev/null 2>&1; then
+    echo "    new server up (pid $NEW_PID)"
+    break
+  fi
+  sleep 1
+done
+
+echo ">>> Signaling old server to restart..."
+curl -s -X POST http://localhost:3777/api/admin/restart || true
+
+echo ""
+echo ">>> Deploy complete."
