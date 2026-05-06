@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import { getTasks, getAgents, getProjects, runTask, getTaskResults, deleteTask, createTask, updateTask, type Task, type Agent, type Project } from "@/lib/api";
+import { getTasks, getAgents, getProjects, runTask, getTaskResults, deleteTask, createTask, updateTask, getApprovals, approveApproval, rejectApproval, type Task, type Agent, type Project } from "@/lib/api";
 import { useStream } from "@/lib/useStream";
 import { TaskPanel } from "@/components/TaskPanel";
 
@@ -47,6 +47,7 @@ export default function TasksPage() {
   const [filterPriority, setFilterPriority] = useState("");
   const [filterAgent, setFilterAgent] = useState("");
   const [filterProject, setFilterProject] = useState("");
+  const [filterScheduled, setFilterScheduled] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [expandedResults, setExpandedResults] = useState<number | null>(null);
@@ -55,6 +56,10 @@ export default function TasksPage() {
   const [editTask, setEditTask] = useState<Task | null>(null);
   const [panelTask, setPanelTask] = useState<Task | null>(null);
   const { lastMessage, connected } = useStream();
+
+  // Approval state
+  const [approvals, setApprovals] = useState<any[]>([]);
+  const [processingApproval, setProcessingApproval] = useState<number | null>(null);
 
   // Form state
   const [formTitle, setFormTitle] = useState("");
@@ -71,8 +76,9 @@ export default function TasksPage() {
     if (filterPriority) params.priority = filterPriority;
     if (filterAgent) params.agent_id = filterAgent;
     if (filterProject) params.project_id = filterProject;
+    if (filterScheduled) params.scheduled = "1";
     return params;
-  }, [page, search, filterStatus, filterPriority, filterAgent, filterProject]);
+  }, [page, search, filterStatus, filterPriority, filterAgent, filterProject, filterScheduled]);
 
   // Silent refresh — no loading state, used for SSE updates
   const refreshData = useCallback(async () => {
@@ -104,7 +110,16 @@ export default function TasksPage() {
     finally { setLoading(false); }
   }, [buildParams]);
 
+  const loadApprovals = useCallback(async () => {
+    try {
+      const data = await getApprovals({ status: "pending" });
+      setApprovals(Array.isArray(data) ? data : []);
+    } catch (e) { console.error(e); }
+  }, []);
+
   useEffect(() => { loadData(); }, [loadData]);
+
+  useEffect(() => { loadApprovals(); }, [loadApprovals]);
 
   useEffect(() => {
     if (!lastMessage) return;
@@ -196,12 +211,28 @@ export default function TasksPage() {
     loadData();
   };
 
+  const handleApprove = async (id: number) => {
+    if (!confirm("Approve this approval request?")) return;
+    setProcessingApproval(id);
+    try { await approveApproval(id); loadApprovals(); loadData(); } catch (e) { console.error(e); }
+    finally { setProcessingApproval(null); }
+  };
+
+  const handleReject = async (id: number) => {
+    if (!confirm("Reject this approval request?")) return;
+    setProcessingApproval(id);
+    try { await rejectApproval(id); loadApprovals(); loadData(); } catch (e) { console.error(e); }
+    finally { setProcessingApproval(null); }
+  };
+
   const handleSel = (setter: (v: string) => void) => (e: any) => {
     const val = e?.target?.value ?? e ?? '';
     setter(val);
   };
 
   const projMap = projects.reduce((acc: any, p) => { acc[p.id] = p.title; return acc; }, {});
+
+  const hasScheduledCol = filterScheduled;
 
   return (
     <div className="page-wrap">
@@ -238,9 +269,66 @@ export default function TasksPage() {
               <option value="">Project</option>
               {projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
             </select>
+            <button
+              className={`btn-sm ${filterScheduled ? "primary" : ""}`}
+              onClick={() => setFilterScheduled(f => !f)}
+            >
+              📅 Scheduled
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Pending Approvals */}
+      {approvals.length > 0 && (
+        <div className="card mt-4" style={{ borderColor: "var(--warning)" }}>
+          <div className="card-content">
+            <h3 className="mb-3">⏳ Pending Approvals ({approvals.length})</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th className="p-3">ID</th>
+                  <th className="p-3">Task ID</th>
+                  <th className="p-3">Notes</th>
+                  <th className="p-3">Requested</th>
+                  <th className="p-3">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {approvals.map(a => (
+                  <tr key={a.id}>
+                    <td className="p-3">#{a.id}</td>
+                    <td className="p-3">
+                      <span className="badge status-pending">#{a.task_id}</span>
+                    </td>
+                    <td className="p-3 text-xs text-muted max-w-xs truncate">{a.notes || "—"}</td>
+                    <td className="p-3 text-xs text-soft">{new Date(a.requested_at).toLocaleString()}</td>
+                    <td className="p-3">
+                      <div className="flex gap-1">
+                        <button
+                          className="btn-sm"
+                          style={{ background: "var(--success)", color: "#fff" }}
+                          disabled={processingApproval === a.id}
+                          onClick={() => handleApprove(a.id)}
+                        >
+                          {processingApproval === a.id ? "…" : "✅ Approve"}
+                        </button>
+                        <button
+                          className="btn-sm danger"
+                          disabled={processingApproval === a.id}
+                          onClick={() => handleReject(a.id)}
+                        >
+                          ❌ Reject
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <div className="card mt-4">
         <div className="table-wrap">
@@ -255,13 +343,14 @@ export default function TasksPage() {
                 <th className="p-3">Depends On</th>
                 <th className="p-3">Created By</th>
                 <th className="p-3">Project</th>
+                {hasScheduledCol && <th className="p-3">Scheduled</th>}
                 <th className="p-3">Created</th>
                 <th className="p-3">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {loading ? <tr><td colSpan={10} className="text-center text-muted py-8">Loading...</td></tr> :
-              tasks.length === 0 ? <tr><td colSpan={10} className="text-center text-muted py-8">No tasks</td></tr> :
+              {loading ? <tr><td colSpan={hasScheduledCol ? 11 : 10} className="text-center text-muted py-8">Loading...</td></tr> :
+              tasks.length === 0 ? <tr><td colSpan={hasScheduledCol ? 11 : 10} className="text-center text-muted py-8">No tasks</td></tr> :
               tasks.map((t, idx) => (
                 <React.Fragment key={`task-${t.id}-${idx}`}>
                   <tr>
@@ -291,6 +380,7 @@ export default function TasksPage() {
                     </td>
                     <td className="p-3 text-xs text-muted">{t.created_by_agent_slug || <span className="text-soft">—</span>}</td>
                     <td className="p-3 text-muted">{projMap[t.project_id] || `Project #${t.project_id}`}</td>
+                    {hasScheduledCol && <td className="p-3 text-xs text-muted">{t.scheduled_at ? new Date(t.scheduled_at).toLocaleString() : "—"}</td>}
                     <td className="p-3 text-soft text-xs">{timeAgo(t.created_at)}</td>
                     <td className="p-3">
                       <div className="flex gap-1">
@@ -306,7 +396,7 @@ export default function TasksPage() {
                     </td>
                   </tr>
                   {expandedResults === t.id && taskResults[t.id] && (
-                    <tr><td colSpan={10} className="p-3" style={{background: "var(--bg)"}}>
+                    <tr><td colSpan={hasScheduledCol ? 11 : 10} className="p-3" style={{background: "var(--bg)"}}>
                       <div className="text-xs max-h-40 overflow-y-auto">
                         {taskResults[t.id].length === 0 ? <div className="text-soft">No results</div> : taskResults[t.id].map((r: any, i: number) => (
                           <div key={i} className="border-b pb-2 mb-2">
@@ -424,7 +514,7 @@ export default function TasksPage() {
         isRunning={runningTask === panelTask.id}
         onClose={() => { setPanelTask(null); refreshData(); }}
         onRun={(id) => { setRunningTask(id); }}
-          onDone={(id) => { setRunningTask(null); }}
+        onDone={(id) => { setRunningTask(null); }}
       />
     )}
     </div>

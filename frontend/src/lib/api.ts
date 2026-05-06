@@ -61,6 +61,8 @@ export interface Task {
   dep_title?: string; // single dependency title (from backend)
   creates_agent?: string;
   created_by_agent_slug?: string;
+  scheduled_at?: string;
+  requires_approval?: boolean;
   created_at: string;
   completed_at?: string;
   run_count?: number;
@@ -75,6 +77,26 @@ export interface Heartbeat {
   status: string;
   action_taken: string;
   triggered_at: string;
+}
+
+export interface WorkflowStep {
+  id?: number;
+  task_title?: string;
+  output?: string;
+  status?: string;
+}
+
+export interface WorkflowRun {
+  id: number;
+  project_id: number;
+  title: string;
+  status: string;
+  current_step: number;
+  steps?: WorkflowStep[];
+  created_at: string;
+  completed_at?: string;
+  error?: string;
+  context?: Record<string, any>;
 }
 
 export interface Dashboard {
@@ -198,4 +220,43 @@ export async function retryTask(id: number) {
 
 export async function cancelTask(id: number) {
   return api<{ ok: boolean; task_id: number; title: string; status: string }>(`/api/tasks/${id}/cancel`, { method: 'POST' });
+}
+
+export async function getProjectWorkflows(projectId: number) {
+  return api<WorkflowRun[]>(`/api/projects/${projectId}/workflows`);
+}
+
+export async function createWorkflow(projectId: number, data: { title: string; steps: { order: number; title: string }[] }) {
+  return api<WorkflowRun>(`/api/projects/${projectId}/workflows`, { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function getWorkflowRun(projectId: number, runId: number) {
+  return api<WorkflowRun>(`/api/projects/${projectId}/workflows/${runId}`);
+}
+
+export async function approveApproval(id: number) {
+  return api<{ ok: boolean; id: number; task_id: number; status: string; resolved_at: string }>(
+    `/api/approvals/${id}`,
+    { method: 'PUT', body: JSON.stringify({ status: 'approved' }) }
+  );
+}
+
+export async function rejectApproval(id: number) {
+  return api<{ ok: boolean; id: number; task_id: number; status: string; resolved_at: string }>(
+    `/api/approvals/${id}`,
+    { method: 'PUT', body: JSON.stringify({ status: 'rejected' }) }
+  );
+}
+
+export async function getApprovals(params: Record<string, string> = {}) {
+  const query = new URLSearchParams(params).toString();
+  return api<any[]>(`/api/approvals?${query}`);
+}
+
+export async function getTools() {
+  return api<any[]>('/api/tools');
+}
+
+export async function patchTool(name: string, data: Partial<{ enabled: boolean; rateLimit: number; description: string; riskLevel: string }>) {
+  return api<any>(`/api/tools/${name}`, { method: 'PATCH', body: JSON.stringify(data) });
 }
