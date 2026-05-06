@@ -1,5 +1,4 @@
 const db = require('../db');
-const { nextId } = db;
 
 // ===================== WORKFLOW ENGINE =====================
 // Executes a defined workflow: ordered steps with agents.
@@ -38,7 +37,7 @@ async function executeWorkflowStep(run, step, previousContext) {
   }
 
   const taskObj = {
-    id: nextId('tasks'),
+    id: db.nextId('tasks'),
     project_id: run.project_id,
     assigned_agent_id: agent.id,
     title: step.task || `Step ${run.current_step + 1}`,
@@ -186,7 +185,7 @@ async function createAndStartWorkflow(projectId, title, steps) {
 
   const now = new Date().toISOString();
   const id = db.insertWorkflowRun({
-    id: nextId('workflow_runs'),
+    id: db.nextId('workflow_runs'),
     project_id: projectId,
     title: title || `Workflow ${Date.now()}`,
     status: 'running',

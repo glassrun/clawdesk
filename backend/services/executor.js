@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const projectBrain = require('./project-brain');
+const { nextId } = require('../db');
 const OPENCLAW_CLI = (() => {
   const val = process.env.OPENCLAW_CLI;
   if (!val || val === '1' || !val.trim()) return 'openclaw';
