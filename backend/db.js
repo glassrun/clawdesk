@@ -27,7 +27,7 @@ process.on('uncaughtException', (err) => {
 
 // ===================== Schema version / Migrations =====================
 
-const CURRENT_VERSION = 7;
+const CURRENT_VERSION = 8;
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS _changelog (
