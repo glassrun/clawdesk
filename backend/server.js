@@ -190,6 +190,9 @@ scheduler.setBroadcastSSE(broadcastSSE);
 scheduler.setSetTaskStatus(setTaskStatus);
 scheduler.startScheduler(30000);
 
+const workflowEngine = require('./services/workflow-engine');
+workflowEngine.setBroadcastSSE(broadcastSSE);
+
 const heartbeat = require('./services/heartbeat');
 heartbeat.setBroadcastSSE(broadcastSSE);
 heartbeat.setSetTaskStatus(setTaskStatus);
