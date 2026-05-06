@@ -125,7 +125,7 @@ export default function ProjectsPage() {
                     <button className="btn-sm" onClick={(e) => { e.stopPropagation(); setMenuOpen(menuOpen === p.id ? null : p.id); }}>⋮</button>
                     {menuOpen === p.id && (
                       <div className="dropdown-menu" style={{ position: "absolute", right: 0, top: "100%", zIndex: 10, minWidth: "160px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "8px", padding: "4px 0", boxShadow: "0 4px 12px rgba(0,0,0,0.3)" }}>
-                        <button className="dropdown-item" onClick={() => { setMenuOpen(null); window.location.href = `/projects?id=${p.id}`; }}>📂 Open</button>
+                        <button className="dropdown-item" onClick={() => { setMenuOpen(null); window.location.href = `/projects/${p.id}`; }}>📂 Open</button>
                         <button className="dropdown-item" onClick={() => openEditModal(p)}>✏️ Edit</button>
                         <button className="dropdown-item" onClick={() => handleClone(p.id)}>📄 Clone</button>
                         <button className="dropdown-item" onClick={() => handleCloneAsTemplate(p.id)}>📋 Clone as Template</button>

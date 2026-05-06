@@ -17,7 +17,7 @@ export function CommandPalette() {
 
   const allResults = [
     ...agents.slice(0, 5).map(a => ({ type: "agent" as const, id: a.id, label: a.name, sub: a.status, href: `/agents?id=${a.id}` })),
-    ...projects.slice(0, 5).map(p => ({ type: "project" as const, id: p.id, label: p.title, sub: p.status || "active", href: `/projects?id=${p.id}` })),
+    ...projects.slice(0, 5).map(p => ({ type: "project" as const, id: p.id, label: p.title, sub: p.status || "active", href: `/projects/${p.id}` })),
     ...tasks.slice(0, 5).map(t => ({ type: "task" as const, id: t.id, label: t.title, sub: t.status, href: `/tasks?id=${t.id}` })),
   ];
 
@@ -93,7 +93,7 @@ export function CommandPalette() {
 
   const sections = [
     { label: "Agents", items: agents.slice(0, 5).map(a => ({ type: "agent" as const, id: a.id, label: a.name, sub: a.status, href: `/agents?id=${a.id}` })) },
-    { label: "Projects", items: projects.slice(0, 5).map(p => ({ type: "project" as const, id: p.id, label: p.title, sub: p.status || "active", href: `/projects?id=${p.id}` })) },
+    { label: "Projects", items: projects.slice(0, 5).map(p => ({ type: "project" as const, id: p.id, label: p.title, sub: p.status || "active", href: `/projects/${p.id}` })) },
     { label: "Tasks", items: tasks.slice(0, 5).map(t => ({ type: "task" as const, id: t.id, label: t.title, sub: t.status, href: `/tasks?id=${t.id}` })) },
   ];
 
