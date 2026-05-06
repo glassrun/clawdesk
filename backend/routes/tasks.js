@@ -105,6 +105,16 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     res.json({ data: paged.map(t => normalizeTask(t, agents)), total, page, limit, pages: Math.ceil(total / limit) });
   });
 
+  // All task results (for billing/analytics)
+  router.get('/results-all', (req, res) => {
+    const results = db.loadTaskResults();
+    if (req.query.agent_id) {
+      const aid = +req.query.agent_id;
+      return res.json(results.filter(r => r.agent_id === aid));
+    }
+    res.json(results);
+  });
+
   // Task by ID
   router.get('/:id', (req, res) => {
     const t = db.loadTasks().find(x => x.id === +req.params.id);
@@ -221,14 +231,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     res.json({ ok: true, soft_deleted: true, dependency_references_cleared: cleared });
   });
 
-  router.get('/results-all', (req, res) => {
-    const results = db.loadTaskResults();
-    if (req.query.agent_id) {
-      const aid = +req.query.agent_id;
-      return res.json(results.filter(r => r.agent_id === aid));
-    }
-    res.json(results);
-  });
+
 
   router.get('/:id/results', (req, res) => { res.json(db.loadTaskResults().filter(r => r.task_id === +req.params.id).sort((a, b) => b.id - a.id)); });
 
