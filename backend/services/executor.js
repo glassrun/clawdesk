@@ -1,7 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
-const { nextId } = require('../db');
+const projectBrain = require('./project-brain');
 const OPENCLAW_CLI = (() => {
   const val = process.env.OPENCLAW_CLI;
   if (!val || val === '1' || !val.trim()) return 'openclaw';
@@ -98,7 +98,7 @@ function createOpenClawAgent(agentId, name, workspace, opts = {}) {
     const vibe = opts.vibe || 'helpful and focused';
     fs.writeFileSync(path.join(wsDir, 'IDENTITY.md'), `# IDENTITY.md\n\n- **Name:** ${name}\n- **Role:** ${vibe}\n- **Creature:** AI agent\n- **Vibe:** ${vibe.split('.').filter(s=>s.trim())[0].split(',').slice(0,2).map(s=>s.trim()).join(', ') || 'focused and effective'}\n- **Emoji:** ${emoji}\n`);
     fs.writeFileSync(path.join(wsDir, 'SOUL.md'), `# SOUL.md\n\nYou are ${name}. ${vibe}. Be resourceful, direct, and actually do the work - don't just say you did.\n`);
-    fs.writeFileSync(path.join(wsDir, 'USER.md'), `# USER.md\n\nS is your operator. Listen carefully. Execute precisely. No filler.\n`);
+    fs.writeFileSync(path.join(wsDir, 'CAPABILITY.md'), `# CAPABILITY.md — ${name}\n\n- **Specialties:** ${vibe || 'general purpose'}\n- **Agent ID:** ${agentId}\n- **Created:** ${new Date().toISOString()}\n`);
     const idCmd = `${OPENCLAW_CLI} agents set-identity --agent "${agentId}" --name "${name.replace(/"/g, '\\"')}" --json`;
     const idResult = spawnSync(idCmd, { shell: true });
     if (idResult.status !== 0) console.log(`[createOpenClawAgent] set-identity: ${idResult.stderr.toString().substring(0, 200)}`);
@@ -118,12 +118,51 @@ function deleteOpenClawAgent(agentId) {
 
 // ===================== TASK EXECUTION =====================
 
-async function executeTask(agent, task) {
+// Retry config for tool error recovery
+const RETRY_CONFIG = {
+  maxRetries: 2,
+  delays: [500, 1000], // ms, exponential backoff
+};
+
+async function executeTask(agent, task, overrideRetry) {
   const db = require('../db');
+
+  // ── Scheduled task gate ──────────────────────────────────────────────
+  if (task.scheduled_at) {
+    const scheduledTime = new Date(task.scheduled_at);
+    if (scheduledTime > new Date()) {
+      console.log(`[Executor] Task #${task.id} scheduled for ${scheduledTime.toISOString()}, skipping (scheduler will pick it up)`);
+      return { action: 'deferred', task_id: task.id, task_title: task.title, reason: 'scheduled_future' };
+    }
+  }
+
+  // ── Approval gate ───────────────────────────────────────────────────
+  if (task.requires_approval) {
+    const { checkAndCreateApproval } = require('./scheduler');
+    checkAndCreateApproval(task);
+    console.log(`[Executor] Task #${task.id} requires approval, task paused`);
+    return { action: 'awaiting_approval', task_id: task.id, task_title: task.title };
+  }
+
   const projects = db.loadProjects();
   const project = projects.find(p => p.id === task.project_id);
 
-  let message = `You are a ClawDesk agent. ClawDesk is AI-powered project management.\n\nWORKSPACE RULES:\n- Use project workspace_path for file ops\n- Write to FULL paths\n- Don't ask if unclear\n\n`;
+  // ── Project Brain: pre-task context ─────────────────────────────────
+  let brainContext = '';
+  if (project && project.workspace_path) {
+    const raw = projectBrain.getContextForTask(project, task.title);
+    if (raw) {
+      brainContext = `\n\n--- PROJECT BRAIN (context from prior sessions) ---\n${raw}\n--- END PROJECT BRAIN ---\n`;
+    }
+    const activeAgents = db.loadAgents().filter(a => a.status !== 'deleted');
+    projectBrain.updateActiveAgents(project, activeAgents.map(a => ({
+      agentId: a.openclaw_agent_id,
+      name: a.name,
+      focus: `[${task.title}] — executing`,
+    })));
+  }
+
+  let message = `You are a ClawDesk agent. ClawDesk is AI-powered project management.\n\nWORKSPACE RULES:\n- Use project workspace_path for file ops\n- Write to FULL paths\n- Don't ask if unclear\n${brainContext}\n`;
   message += `\nUse your tools (read, write, exec, web_search, web_fetch) to actually complete the task.`;
   if (project && project.workspace_path) {
     message += `\nCRITICAL: Write ALL files to the PROJECT workspace, not your own workspace.`;
@@ -141,7 +180,7 @@ async function executeTask(agent, task) {
 
   message += `\n\n--- TASK BOARD ---`;
   message += `\nYou can query the project task board to coordinate with other agents:`;
-  message += `\nGET ${BASE_URL}/api/projects/${task.project_id}/tasks` — list all tasks (id, title, status, assigned_agent_id, priority)`;
+  message += `\nGET ${BASE_URL}/api/projects/${task.project_id}/tasks`  -- list all tasks (id, title, status, assigned_agent_id, priority)`;
   message += `\n\nQuery the task board before starting work to see what other agents are doing and avoid duplicate effort.`;
   message += `\n\n--- TOOLS ---`;
   message += `\nYou can create new tasks for this project via HTTP POST:`;
@@ -208,79 +247,70 @@ async function executeTask(agent, task) {
   }
 
   const startTime = Date.now();
+  let toolsUsed = [
+    { tool: 'exec', description: 'openclaw-agent-cli', ts: new Date().toISOString() },
+  ];
 
   // Streaming callback — broadcasts chunks to SSE as they arrive
   const onChunk = (data, type) => {
     module.exports.broadcastTaskStream(task.id, data, type);
   };
 
-  try {
-    const result = await runOpenClawAgent(agent.openclaw_agent_id, message, undefined, onChunk);
-    const durationMs = Date.now() - startTime;
-    const output = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
-
-    // ── Token / cost tracking ─────────────────────────────────────────────
-    // Read usage from the agent's sessions.json (written by OpenClaw after each run)
-    let usage = { inputTokens: 0, outputTokens: 0, cacheRead: 0, totalTokens: 0, estimatedCostUsd: 0 };
-    try {
-      const agentDir = path.join(require('os').homedir(), '.openclaw', 'agents', agent.openclaw_agent_id);
-      const sessionsFile = path.join(agentDir, 'sessions', 'sessions.json');
-      if (require('fs').existsSync(sessionsFile)) {
-        const sessionsData = JSON.parse(require('fs').readFileSync(sessionsFile, 'utf8'));
-        // Find the most recent session (by lastInteractionAt)
-        let best = null;
-        for (const [key, sess] of Object.entries(sessionsData)) {
-          if (sess.lastInteractionAt && (!best || sess.lastInteractionAt > best.lastInteractionAt)) best = sess;
-        }
-        if (best) {
-          usage.inputTokens    = best.inputTokens    || 0;
-          usage.outputTokens   = best.outputTokens   || 0;
-          usage.cacheRead      = best.cacheRead      || 0;
-          usage.totalTokens    = best.totalTokens    || 0;
-          usage.estimatedCostUsd = best.estimatedCostUsd || 0;
+  // ── Error recovery helper ─────────────────────────────────────────────
+  async function withToolRetry(fn, label) {
+    const maxRetries = overrideRetry?.maxRetries ?? RETRY_CONFIG.maxRetries;
+    const delays = overrideRetry?.delays ?? RETRY_CONFIG.delays;
+    let lastError;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await fn();
+      } catch (err) {
+        lastError = err;
+        if (attempt < maxRetries) {
+          const delay = delays[attempt] ?? delays[delays.length - 1];
+          console.log(`[Retry] ${label} failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms: ${err.message}`);
+          await new Promise(r => setTimeout(r, delay));
         }
       }
-    } catch (e) {
-      // Non-fatal — usage tracking is best-effort
-      console.log(`[executor] usage tracking: ${e.message}`);
     }
+    throw lastError;
+  }
 
-    const { setTaskStatus } = require('./heartbeat');
-    setTaskStatus(task.id, 'done');
-    module.exports.broadcastTaskDone(task.id, 'done');
-    const results = db.loadTaskResults();
-    const resultObj = {
-      id: nextId('task_results'),
-      task_id: task.id,
-      agent_id: agent.id,
-      input: message,
-      output,
-      duration_ms: durationMs,
-      executed_at: new Date().toISOString(),
-      input_tokens:  usage.inputTokens,
-      output_tokens: usage.outputTokens,
-      cache_read_tokens: usage.cacheRead,
-      total_tokens:  usage.totalTokens,
-      cost:          usage.estimatedCostUsd,
-    };
-    if (createdAgentInfo) resultObj.created_agent = createdAgentInfo;
-    results.push(resultObj);
-    db.saveTaskResults(results);
-    const ret = { action: 'completed', task_id: task.id, task_title: task.title, agent_id: agent.openclaw_agent_id };
-    if (createdAgentInfo) ret.created_agent = createdAgentInfo;
-    return ret;
+  let result = null;
+  let executionError = null;
+
+  try {
+    result = await withToolRetry(
+      () => runOpenClawAgent(agent.openclaw_agent_id, message, undefined, onChunk),
+      'runOpenClawAgent'
+    );
   } catch (err) {
+    executionError = err;
+    // Log retry event to audit log
+    try {
+      const { audit } = require('../db');
+      audit('tasks', task.id, 'execution_error', null, { error: err.message, agent_id: agent.id });
+    } catch (auditErr) {
+      console.log(`[executor] audit log failed: ${auditErr.message}`);
+    }
+  }
+
+  if (executionError) {
     const durationMs = Date.now() - startTime;
     const { setTaskStatus } = require('./heartbeat');
     setTaskStatus(task.id, 'failed');
     module.exports.broadcastTaskDone(task.id, 'failed');
+    if (project && project.workspace_path) {
+      const sessionSummary = `Failed task "${task.title}". Agent: ${agent.openclaw_agent_id}. Error: ${executionError.message}.`;
+      projectBrain.appendSessionMemory(project, sessionSummary);
+    }
     const results = db.loadTaskResults();
     const resultObj = {
       id: nextId('task_results'),
       task_id: task.id,
       agent_id: agent.id,
       input: message,
-      output: `Error: ${err.message}`,
+      output: `Error: ${executionError.message}`,
       duration_ms: durationMs,
       executed_at: new Date().toISOString(),
       input_tokens:  0,
@@ -288,12 +318,75 @@ async function executeTask(agent, task) {
       cache_read_tokens: 0,
       total_tokens:  0,
       cost:          0,
+      tools_used: JSON.stringify(toolsUsed),
     };
     if (createdAgentInfo) resultObj.created_agent = createdAgentInfo;
     results.push(resultObj);
     db.saveTaskResults(results);
-    const ret = { action: 'failed', task_id: task.id, task_title: task.title, agent_id: agent.openclaw_agent_id, error: err.message };
+    const ret = { action: 'failed', task_id: task.id, task_title: task.title, agent_id: agent.openclaw_agent_id, error: executionError.message };
     if (createdAgentInfo) ret.created_agent = createdAgentInfo;
     return ret;
   }
+
+  // Success path
+  const durationMs = Date.now() - startTime;
+  const output = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+
+  // ── Token / cost tracking ─────────────────────────────────────────────
+  let usage = { inputTokens: 0, outputTokens: 0, cacheRead: 0, totalTokens: 0, estimatedCostUsd: 0 };
+  try {
+    const agentDir = path.join(require('os').homedir(), '.openclaw', 'agents', agent.openclaw_agent_id);
+    const sessionsFile = path.join(agentDir, 'sessions', 'sessions.json');
+    if (require('fs').existsSync(sessionsFile)) {
+      const sessionsData = JSON.parse(require('fs').readFileSync(sessionsFile, 'utf8'));
+      let best = null;
+      for (const [key, sess] of Object.entries(sessionsData)) {
+        if (sess.lastInteractionAt && (!best || sess.lastInteractionAt > best.lastInteractionAt)) best = sess;
+      }
+      if (best) {
+        usage.inputTokens    = best.inputTokens    || 0;
+        usage.outputTokens   = best.outputTokens   || 0;
+        usage.cacheRead      = best.cacheRead      || 0;
+        usage.totalTokens    = best.totalTokens    || 0;
+        usage.estimatedCostUsd = best.estimatedCostUsd || 0;
+        toolsUsed.push({
+          tool: 'session_stats',
+          description: 'token usage from sessions.json',
+          ts: new Date().toISOString(),
+        });
+      }
+    }
+  } catch (e) {
+    console.log(`[executor] usage tracking: ${e.message}`);
+  }
+
+  const { setTaskStatus } = require('./heartbeat');
+  setTaskStatus(task.id, 'done');
+  module.exports.broadcastTaskDone(task.id, 'done');
+  if (project && project.workspace_path) {
+    const sessionSummary = `Completed task "${task.title}". Agent: ${agent.openclaw_agent_id}. Duration: ${durationMs}ms. Tokens: ${usage.totalTokens}. Cost: $${usage.estimatedCostUsd}.`;
+    projectBrain.appendSessionMemory(project, sessionSummary);
+  }
+  const results = db.loadTaskResults();
+  const resultObj = {
+    id: nextId('task_results'),
+    task_id: task.id,
+    agent_id: agent.id,
+    input: message,
+    output,
+    duration_ms: durationMs,
+    executed_at: new Date().toISOString(),
+    input_tokens:  usage.inputTokens,
+    output_tokens: usage.outputTokens,
+    cache_read_tokens: usage.cacheRead,
+    total_tokens:  usage.totalTokens,
+    cost:          usage.estimatedCostUsd,
+    tools_used: JSON.stringify(toolsUsed),
+  };
+  if (createdAgentInfo) resultObj.created_agent = createdAgentInfo;
+  results.push(resultObj);
+  db.saveTaskResults(results);
+  const ret = { action: 'completed', task_id: task.id, task_title: task.title, agent_id: agent.openclaw_agent_id };
+  if (createdAgentInfo) ret.created_agent = createdAgentInfo;
+  return ret;
 }

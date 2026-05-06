@@ -247,7 +247,9 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
       created_by_agent_id: toNum(created_by_agent_id),
       priority: priority || 'medium',
       created_at: new Date().toISOString(),
-      completed_at: null
+      completed_at: null,
+      scheduled_at: req.body.scheduled_at || null,
+      requires_approval: req.body.requires_approval ? 1 : 0,
     };
     tasks.push(t);
     db.saveTasks(tasks);
@@ -286,11 +288,110 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
       creates_agent: null,
       created_by_agent_id: creatorAgent.id,
       priority: priority || 'medium',
-      created_at: new Date().toISOString(), completed_at: null
+      created_at: new Date().toISOString(), completed_at: null,
+      scheduled_at: req.body.scheduled_at || null,
+      requires_approval: req.body.requires_approval ? 1 : 0,
     };
     tasks.push(t);
     db.saveTasks(tasks);
     const a = agents.find(x => x.id === t.assigned_agent_id);
     res.status(201).json({ ...t, agent_name: a?.name, openclaw_agent_id: a?.openclaw_agent_id, created_by: creatorAgent.name });
+  });
+
+  // ===================== Scheduled Tasks =====================
+
+  router.get('/:id/tasks/scheduled', (req, res) => {
+    if (!db.loadProjects().find(p => p.id === +req.params.id)) return res.status(404).json({ error: 'project not found' });
+    const tasks = db.loadTasks().filter(t => t.project_id === +req.params.id && t.scheduled_at);
+    if (req.query.upcoming === '1') {
+      const now = new Date();
+      return res.json(tasks.filter(t => new Date(t.scheduled_at) > now).sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at)));
+    }
+    res.json(tasks.sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at)));
+  });
+
+  // ===================== Trigger Rules =====================
+
+  router.get('/:id/trigger-rules', (req, res) => {
+    const p = db.loadProjects().find(x => x.id === +req.params.id);
+    if (!p) return res.status(404).json({ error: 'not found' });
+    let rules = p.trigger_rules;
+    if (typeof rules === 'string') { try { rules = JSON.parse(rules); } catch { rules = []; } }
+    res.json({ project_id: p.id, trigger_rules: rules || [] });
+  });
+
+  router.put('/:id/trigger-rules', (req, res) => {
+    const { trigger_rules } = req.body;
+    if (trigger_rules !== undefined && !Array.isArray(trigger_rules)) return res.status(400).json({ error: 'trigger_rules must be an array' });
+    const projects = db.loadProjects();
+    const p = projects.find(x => x.id === +req.params.id);
+    if (!p) return res.status(404).json({ error: 'not found' });
+    p.trigger_rules = Array.isArray(trigger_rules) ? JSON.stringify(trigger_rules) : (p.trigger_rules || '[]');
+    db.saveProjects(projects);
+    let rules = p.trigger_rules;
+    if (typeof rules === 'string') { try { rules = JSON.parse(rules); } catch { rules = []; } }
+    res.json({ ok: true, project_id: p.id, trigger_rules: rules });
+  });
+
+  // ===================== Workflows =====================
+
+
+  router.get('/:id/workflows', (req, res) => {
+    const runs = db.loadWorkflowRuns().filter(r => r.project_id === +req.params.id);
+    res.json(runs.map(r => {
+      let steps = r.steps;
+      if (typeof steps === 'string') { try { steps = JSON.parse(steps); } catch { steps = []; } }
+      return { ...r, steps };
+    }));
+  });
+
+  router.post('/:id/workflows', async (req, res) => {
+    if (!db.loadProjects().find(p => p.id === +req.params.id)) return res.status(404).json({ error: 'project not found' });
+    const { title, steps } = req.body;
+    if (!title) return res.status(400).json({ error: 'title required' });
+    if (!Array.isArray(steps) || steps.length === 0) return res.status(400).json({ error: 'steps must be a non-empty array' });
+    const { createAndStartWorkflow } = require('../services/workflow-engine');
+    try {
+      const result = await createAndStartWorkflow(+req.params.id, title, steps);
+      res.status(201).json(result);
+    } catch (e) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  router.get('/:id/workflows/:runId', (req, res) => {
+    const runs = db.loadWorkflowRuns().filter(r => r.project_id === +req.params.id && r.id === +req.params.runId);
+    if (runs.length === 0) return res.status(404).json({ error: 'workflow run not found' });
+    const r = runs[0];
+    let steps = r.steps;
+    if (typeof steps === 'string') { try { steps = JSON.parse(steps); } catch { steps = []; } }
+    let context = r.context;
+    if (typeof context === 'string') { try { context = JSON.parse(context); } catch { context = {}; } }
+    res.json({ ...r, steps, context });
+  });
+
+  // ── Capability registry ─────────────────────────────────────────────
+  // Returns all agent CAPABILITY.md profiles for agents that have worked on this project.
+  router.get('/:id/agents/capabilities', (req, res) => {
+    const fs = require('fs');
+    const path = require('path');
+    const tasks = db.loadTasks().filter(t => t.project_id === +req.params.id);
+    const agentIds = [...new Set(tasks.map(t => t.assigned_agent_id).filter(Boolean))];
+    const agents = db.loadAgents().filter(a => agentIds.includes(a.id));
+    const profileRoot = process.env.AGENT_WORKSPACE_ROOT || path.join(process.env.HOME || '/home/openclaw', '.openclaw', 'agents');
+    const result = [];
+    for (const agent of agents) {
+      const capFile = path.join(profileRoot, agent.openclaw_agent_id, 'CAPABILITY.md');
+      try {
+        if (fs.existsSync(capFile)) {
+          result.push({ agent_id: agent.id, openclaw_agent_id: agent.openclaw_agent_id, name: agent.name, capability_md: fs.readFileSync(capFile, 'utf8') });
+        } else {
+          result.push({ agent_id: agent.id, openclaw_agent_id: agent.openclaw_agent_id, name: agent.name, capability_md: null });
+        }
+      } catch {
+        result.push({ agent_id: agent.id, openclaw_agent_id: agent.openclaw_agent_id, name: agent.name, capability_md: null });
+      }
+    }
+    res.json(result);
   });
 };
