@@ -245,7 +245,7 @@ require('./routes/stream-task')(taskStreamRouter, { taskSseClients });
 app.use('/api/stream/task', taskStreamRouter);
 
 const systemRouter = express.Router();
-const systemCtx = { db, broadcastSSE };
+const systemCtx = { db, broadcastSSE, getHeartbeatStats: heartbeat.getStats, isHeartbeatRunning: heartbeat.isRunning };
 require('./routes/system')(systemRouter, systemCtx);
 app.use('/api/system', systemRouter);
 

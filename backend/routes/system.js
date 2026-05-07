@@ -1,4 +1,4 @@
-module.exports = function(router, { db, broadcastSSE, heartbeatStats, heartbeatRunning }) {
+module.exports = function(router, { db, broadcastSSE, getHeartbeatStats, isHeartbeatRunning }) {
 
   // Heartbeats
   router.get('/', (req, res) => {
@@ -51,6 +51,7 @@ module.exports = function(router, { db, broadcastSSE, heartbeatStats, heartbeatR
   router.get('/health', (req, res) => {
     const agents = db.loadAgents();
     const tasks = db.loadTasks();
+    const hb = getHeartbeatStats();
     res.json({
       status: 'ok',
       uptime: process.uptime(),
@@ -58,13 +59,13 @@ module.exports = function(router, { db, broadcastSSE, heartbeatStats, heartbeatR
       active_tasks: tasks.filter(t => ['pending', 'in_progress'].includes(t.status)).length,
       failed_tasks: tasks.filter(t => t.status === 'failed').length,
       heartbeat: {
-        cycles: heartbeatStats.cycles,
-        avgMs: heartbeatStats.cycles > 0 ? Math.round(heartbeatStats.totalMs / heartbeatStats.cycles) : 0,
-        lastMs: heartbeatStats.lastCycleMs,
-        recentAvgMs: heartbeatStats.last10Ms.length > 0 ? Math.round(heartStats.last10Ms.reduce((a,b) => a+b, 0) / heartbeatStats.last10Ms.length) : 0,
-        agentsProcessed: heartbeatStats.agentsProcessed,
-        errors: heartbeatStats.errors,
-        running: heartbeatRunning
+        cycles: hb.cycles,
+        avgMs: hb.cycles > 0 ? Math.round(hb.totalMs / hb.cycles) : 0,
+        lastMs: hb.lastCycleMs,
+        recentAvgMs: hb.last10Ms.length > 0 ? Math.round(hb.last10Ms.reduce((a,b) => a+b, 0) / hb.last10Ms.length) : 0,
+        agentsProcessed: hb.agentsProcessed,
+        errors: hb.errors,
+        running: isHeartbeatRunning()
       },
       timestamp: new Date().toISOString()
     });
