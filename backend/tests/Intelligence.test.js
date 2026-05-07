@@ -14,7 +14,7 @@ const fs = require('fs');
 const { getDb, closeDb } = require('./helpers');
 
 const PROFILE_ROOT = process.env.AGENT_WORKSPACE_ROOT ||
-  path.join(process.env.HOME || '/home/openclaw', '.openclaw', 'agents');
+  path.join(process.env.HOME, '.openclaw', 'agents');
 
 // ── tiny HTTP client ───────────────────────────────────────────────────────────
 

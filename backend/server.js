@@ -335,7 +335,7 @@ app.post('/api/admin/restart', (req, res) => {
   const restartScript = `
     const net = require('net');
     const { spawn } = require('child_process');
-    const newServer = spawn('node', ['server.js'], { cwd: '/home/openclaw/.openclaw/workspace/clawdesk/backend', detached: true, stdio: 'ignore' });
+    const newServer = spawn('node', ['server.js'], { cwd: path.join(__dirname, '..'), detached: true, stdio: 'ignore' });
     newServer.unref();
     // Wait for port to be bound (new server ready), max 10s
     const deadline = Date.now() + 10000;

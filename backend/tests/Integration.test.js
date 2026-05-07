@@ -94,7 +94,7 @@ function createCapabilitiesApp(db) {
     if (!agent) return res.status(404).json({ error: 'not found' });
 
     const fs = require('fs');
-    const agentWorkspace = path.join(process.env.HOME || '/home/openclaw', '.openclaw', 'agents', agent.openclaw_agent_id);
+    const agentWorkspace = path.join(process.env.HOME, '.openclaw', 'agents', agent.openclaw_agent_id);
     const capFile = path.join(agentWorkspace, 'CAPABILITIES.md');
 
     const capabilities = { tools: [], skills: [], raw: null };
@@ -349,7 +349,7 @@ test('PATCH /api/tools/:name — ignores unknown fields', async () => {
 
 test('GET /api/agents/:id/capabilities — returns empty tools for agent with no CAPABILITY.md', async () => {
   const db = getDb();
-  const agentHome = path.join(process.env.HOME || '/home/openclaw', '.openclaw', 'agents');
+  const agentHome = path.join(process.env.HOME, '.openclaw', 'agents');
   fs.mkdirSync(agentHome, { recursive: true });
   // Ensure no CAPABILITIES.md exists for our test agent
   db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)')
@@ -366,7 +366,7 @@ test('GET /api/agents/:id/capabilities — returns empty tools for agent with no
 
 test('GET /api/agents/:id/capabilities — returns capabilities for agent with CAPABILITIES.md', async () => {
   const db = getDb();
-  const agentHome = path.join(process.env.HOME || '/home/openclaw', '.openclaw', 'agents', 'cap-test-agent');
+  const agentHome = path.join(process.env.HOME, '.openclaw', 'agents', 'cap-test-agent');
   fs.mkdirSync(agentHome, { recursive: true });
 
   // Write a CAPABILITIES.md file with "### tool: name" format
@@ -404,7 +404,7 @@ test('GET /api/agents/:id/capabilities — 404 for non-existent agent', async ()
 
 // Clean up test CAPABILITIES.md
 try {
-  const capTestPath = path.join(process.env.HOME || '/home/openclaw', '.openclaw', 'agents', 'cap-test-agent', 'CAPABILITIES.md');
+  const capTestPath = path.join(process.env.HOME, '.openclaw', 'agents', 'cap-test-agent', 'CAPABILITIES.md');
   if (fs.existsSync(capTestPath)) fs.unlinkSync(capTestPath);
 } catch (e) { /* ignore cleanup errors */ }
 

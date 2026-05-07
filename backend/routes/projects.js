@@ -378,7 +378,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     const tasks = db.loadTasks().filter(t => t.project_id === +req.params.id);
     const agentIds = [...new Set(tasks.map(t => t.assigned_agent_id).filter(Boolean))];
     const agents = db.loadAgents().filter(a => agentIds.includes(a.id));
-    const profileRoot = process.env.AGENT_WORKSPACE_ROOT || path.join(process.env.HOME || '/home/openclaw', '.openclaw', 'agents');
+    const profileRoot = process.env.AGENT_WORKSPACE_ROOT || path.join(process.env.HOME, '.openclaw', 'agents');
     const result = [];
     for (const agent of agents) {
       const capFile = path.join(profileRoot, agent.openclaw_agent_id, 'CAPABILITY.md');
