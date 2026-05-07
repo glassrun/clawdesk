@@ -68,6 +68,9 @@ export default function TasksPage() {
   const [formAgent, setFormAgent] = useState("");
   const [formProject, setFormProject] = useState(0);
   const [formDepIds, setFormDepIds] = useState<number[]>([]);
+  const [formScheduledAt, setFormScheduledAt] = useState("");
+  const [formRepeat, setFormRepeat] = useState(false);
+  const [formRequiresApproval, setFormRequiresApproval] = useState(false);
 
   const buildParams = useCallback(() => {
     const params: any = { page, limit: 30 };
@@ -129,12 +132,20 @@ export default function TasksPage() {
     }
   }, [lastMessage, refreshData]);
 
-  // Ensure formProject is valid when Add modal opens
+  // Reset form when Add modal opens
   useEffect(() => {
-    if (showAddModal && !formProject && projects[0]) {
-      setFormProject(projects[0].id);
+    if (showAddModal) {
+      setFormTitle("");
+      setFormDesc("");
+      setFormPriority("medium");
+      setFormAgent("");
+      setFormProject(projects[0]?.id || 0);
+      setFormDepIds([]);
+      setFormScheduledAt("");
+      setFormRepeat(false);
+      setFormRequiresApproval(false);
     }
-  }, [showAddModal, formProject, projects]);
+  }, [showAddModal, projects]);
 
   const handleRun = async (id: number) => {
     setRunningTask(id);
@@ -179,6 +190,9 @@ export default function TasksPage() {
     setFormAgent(task.assigned_agent_id ? String(task.assigned_agent_id) : "");
     setFormProject(task.project_id);
     setFormDepIds(task.dependency_ids ? JSON.parse(task.dependency_ids) : (task.dependency_id ? [task.dependency_id] : []));
+    setFormScheduledAt(task.scheduled_at ? task.scheduled_at.slice(0, 16) : "");
+    setFormRepeat(task.repeat === true);
+    setFormRequiresApproval(!!task.requires_approval);
     setShowEditModal(true);
   };
 
@@ -192,6 +206,9 @@ export default function TasksPage() {
       project_id: formProject,
       dependency_id: formDepIds[0] || undefined,
       dependency_ids: formDepIds.length > 0 ? JSON.stringify(formDepIds) : undefined,
+      scheduled_at: formScheduledAt || undefined,
+      repeat: formRepeat || undefined,
+      requires_approval: formRequiresApproval || undefined,
     });
     setShowEditModal(false);
     loadData();
@@ -205,9 +222,12 @@ export default function TasksPage() {
       assigned_agent_id: formAgent ? +formAgent : undefined,
       dependency_id: formDepIds[0] || undefined,
       dependency_ids: formDepIds.length > 0 ? JSON.stringify(formDepIds) : undefined,
+      scheduled_at: formScheduledAt || undefined,
+      repeat: formRepeat || undefined,
+      requires_approval: formRequiresApproval || undefined,
     });
     setShowAddModal(false);
-    setFormTitle(""); setFormDesc(""); setFormPriority("medium"); setFormAgent(""); setFormProject(projects[0]?.id || 0); setFormDepIds([]);
+    setFormTitle(""); setFormDesc(""); setFormPriority("medium"); setFormAgent(""); setFormProject(projects[0]?.id || 0); setFormDepIds([]); setFormScheduledAt(""); setFormRepeat(false); setFormRequiresApproval(false);
     loadData();
   };
 
@@ -457,6 +477,16 @@ export default function TasksPage() {
               ))}
             </select>
             {tasks.filter(t => t.project_id === formProject && t.id !== editTask?.id).length === 0 && <span className="text-muted text-xs">No other tasks in this project</span>}
+            <label>Scheduled At</label>
+            <input type="datetime-local" value={formScheduledAt} onChange={(e) => setFormScheduledAt(e.target.value)} className="w-full" />
+            <label className="flex items-center gap-2 mt-2">
+              <input type="checkbox" checked={formRepeat} onChange={(e) => setFormRepeat(e.target.checked)} />
+              🔁 Repeat (auto-reschedule when done)
+            </label>
+            <label className="flex items-center gap-2 mt-1">
+              <input type="checkbox" checked={formRequiresApproval} onChange={(e) => setFormRequiresApproval(e.target.checked)} />
+              ⏳ Requires approval before execution
+            </label>
           </div>
           <div className="modal-footer">
             <button onClick={() => setShowAddModal(false)}>Cancel</button>
@@ -501,6 +531,16 @@ export default function TasksPage() {
               ))}
             </select>
             {tasks.filter(t => t.project_id === formProject && t.id !== editTask?.id).length === 0 && <span className="text-muted text-xs">No other tasks in this project</span>}
+            <label>Scheduled At</label>
+            <input type="datetime-local" value={formScheduledAt} onChange={(e) => setFormScheduledAt(e.target.value)} className="w-full" />
+            <label className="flex items-center gap-2 mt-2">
+              <input type="checkbox" checked={formRepeat} onChange={(e) => setFormRepeat(e.target.checked)} />
+              🔁 Repeat (auto-reschedule when done)
+            </label>
+            <label className="flex items-center gap-2 mt-1">
+              <input type="checkbox" checked={formRequiresApproval} onChange={(e) => setFormRequiresApproval(e.target.checked)} />
+              ⏳ Requires approval before execution
+            </label>
           </div>
           <div className="modal-footer">
             <button onClick={() => setShowEditModal(false)}>Cancel</button>

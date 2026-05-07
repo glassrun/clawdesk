@@ -63,6 +63,7 @@ export interface Task {
   created_by_agent_slug?: string;
   scheduled_at?: string;
   requires_approval?: boolean;
+  repeat?: boolean;
   created_at: string;
   completed_at?: string;
   run_count?: number;
