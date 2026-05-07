@@ -10,6 +10,7 @@ const tabs = [
   { href: "/tasks", label: "📋 Tasks" },
   { href: "/heartbeats", label: "💓 Heartbeats" },
   { href: "/audit", label: "📊 Audit" },
+  { href: "/system/stats", label: "⚙️ System" },
   { href: "/billing", label: "💰 Billing" },
   { href: "/tools", label: "🔧 Tools" },
 ];

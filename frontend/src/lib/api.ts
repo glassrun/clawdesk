@@ -120,6 +120,9 @@ export interface SystemStats {
   deleted_tasks: number;
   db_size_bytes: number;
   schema_version: number;
+  uptime_seconds?: number;
+  node_version?: string;
+  timestamp?: string;
 }
 
 export async function getDashboard() {
@@ -259,4 +262,44 @@ export async function getTools() {
 
 export async function patchTool(name: string, data: Partial<{ enabled: boolean; rateLimit: number; description: string; riskLevel: string }>) {
   return api<any>(`/api/tools/${name}`, { method: 'PATCH', body: JSON.stringify(data) });
+}
+
+export async function getSystemHealth() {
+  return api<any>('/api/system/health');
+}
+
+export async function runSystemCleanup() {
+  return api<{ ok: boolean; stale_completed_at_cleared: number; hard_deleted_tasks: number; hard_deleted_projects: number }>('/api/system/cleanup', { method: 'POST' });
+}
+
+export async function runSystemVacuum() {
+  return api<{ ok: boolean }>('/api/system/vacuum', { method: 'POST' });
+}
+
+export async function getTaskHistory(id: number) {
+  return api<any[]>(`/api/tasks/${id}/history`);
+}
+
+export async function getTaskChain(id: number) {
+  return api<any[]>(`/api/tasks/${id}/chain`);
+}
+
+export async function getTaskDependents(id: number) {
+  return api<any[]>(`/api/tasks/${id}/dependents`);
+}
+
+export async function duplicateTask(id: number) {
+  return api<any>(`/api/tasks/${id}/duplicate`, { method: 'POST' });
+}
+
+export async function addTaskNotes(id: number, notes: string) {
+  return api<any>(`/api/tasks/${id}/notes`, { method: 'POST', body: JSON.stringify({ notes }) });
+}
+
+export async function assignTask(id: number, agentId: number) {
+  return api<any>(`/api/tasks/${id}/assign`, { method: 'POST', body: JSON.stringify({ agent_id: agentId }) });
+}
+
+export async function reactivateAgent(id: number) {
+  return api<any>(`/api/agents/${id}/reactivate`, { method: 'POST' });
 }
