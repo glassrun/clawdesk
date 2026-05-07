@@ -308,47 +308,57 @@ export default function TasksPage() {
               <thead>
                 <tr>
                   <th className="p-3">ID</th>
-                  <th className="p-3">Task ID</th>
+                  <th className="p-3">Task</th>
+                  <th className="p-3">Agent</th>
+                  <th className="p-3">Description</th>
                   <th className="p-3">Notes</th>
                   <th className="p-3">Requested</th>
                   <th className="p-3">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {approvals.map(a => (
-                  <tr key={a.id}>
-                    <td className="p-3">#{a.id}</td>
-                    <td className="p-3">
-                      <span className="badge status-pending">#{a.task_id}</span>
-                    </td>
-                    <td className="p-3 text-xs text-muted max-w-xs truncate">{a.notes || "—"}</td>
-                    <td className="p-3 text-xs text-soft">{new Date(a.requested_at).toLocaleString()}</td>
-                    <td className="p-3">
-                      <div className="flex gap-1">
-                        <button
-                          className="btn-sm"
-                          style={{ background: "var(--success)", color: "#fff" }}
-                          disabled={processingApproval === a.id}
-                          onClick={() => handleApprove(a.id)}
-                        >
-                          {processingApproval === a.id ? "…" : "✅ Approve"}
-                        </button>
-                        <button
-                          className="btn-sm danger"
-                          disabled={processingApproval === a.id}
-                          onClick={() => handleReject(a.id)}
-                        >
-                          ❌ Reject
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {approvals.map(a => {
+                  const task = tasks.find(t => t.id === a.task_id);
+                  const agent = task ? agents.find(ag => ag.id === task.assigned_agent_id) : null;
+                  return (
+                    <tr key={a.id}>
+                      <td className="p-3">#{a.id}</td>
+                      <td className="p-3">
+                        <span className="badge status-pending">#{a.task_id}</span>
+                        {task && <span className="ml-2 text-sm">{task.title}</span>}
+                      </td>
+                      <td className="p-3 text-sm">{agent ? agent.name : "—"}</td>
+                      <td className="p-3 text-xs text-muted max-w-[200px] truncate">{task?.description || "—"}</td>
+                      <td className="p-3 text-xs text-muted max-w-xs truncate">{a.notes || "—"}</td>
+                      <td className="p-3 text-xs text-soft">{new Date(a.requested_at).toLocaleString()}</td>
+                      <td className="p-3">
+                        <div className="flex gap-1">
+                          <button
+                            className="btn-sm"
+                            style={{ background: "var(--success)", color: "#fff" }}
+                            disabled={processingApproval === a.id}
+                            onClick={() => handleApprove(a.id)}
+                          >
+                            {processingApproval === a.id ? "…" : "✅ Approve"}
+                          </button>
+                          <button
+                            className="btn-sm danger"
+                            disabled={processingApproval === a.id}
+                            onClick={() => handleReject(a.id)}
+                          >
+                            ❌ Reject
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
       )}
+
 
       <div className="card mt-4">
         <div className="table-wrap">
