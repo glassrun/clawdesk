@@ -20,14 +20,14 @@ export function NavTabs() {
 
   return (
     <nav className="nav-wrap">
-      <div className="nav-inner">
+      <div className="nav-inner overflow-x-auto">
         {tabs.map((tab) => {
           const isActive = pathname === tab.href || (tab.href !== "/dashboard" && pathname.startsWith(tab.href));
           return (
             <Link
               key={tab.href}
               href={tab.href}
-              className={`nav-link ${isActive ? "active" : ""}`}
+              className={`nav-link shrink-0 ${isActive ? "active" : ""}`}
             >
               {tab.label}
             </Link>

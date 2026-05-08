@@ -145,7 +145,6 @@ export default function DashboardPage() {
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [startTime] = useState(() => Date.now());
   const { lastMessage, connected } = useStream();
 
   const refreshAll = useCallback(async () => {
@@ -181,7 +180,7 @@ export default function DashboardPage() {
   const failed = dash?.failed_tasks ?? 0;
   const total = completed + failed;
   const successRate = total > 0 ? Math.round((completed / total) * 100) : 0;
-  const uptimeMs = Date.now() - startTime;
+  const uptimeMs = (stats?.uptime_seconds ?? 0) * 1000;
 
   if (loading) return (
     <div className="page-wrap">

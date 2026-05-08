@@ -490,8 +490,77 @@ hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
 .max-h-40 { max-height: 160px; }
 .min-w-0 { min-width: 0; }
 
-/* Spacing utilities for filter bars */
-.gap-2 { gap: 8px; }
+/* ==================== RESPONSIVE (mobile-first) ==================== */
+@media (max-width: 768px) {
+  .container, .page-wrap { padding: 12px; }
+
+  .page-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  /* Stats grid — 2 columns on tablet, 1 on mobile */
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+  .stat-card { padding: 14px; }
+  .stat-icon { width: 36px; height: 36px; font-size: 16px; }
+  .stat-value { font-size: 22px; }
+
+  /* Charts row — stack vertically */
+  .charts-row { grid-template-columns: 1fr !important; }
+
+  /* Two-col panels — stack */
+  .two-col { grid-template-columns: 1fr !important; }
+
+  /* Nav — horizontal scroll */
+  .nav-inner { gap: 4px; }
+  .nav-link { padding: 8px 10px; font-size: 12px; }
+
+  /* Filter bar — wrap */
+  .card-content .flex { flex-wrap: wrap; }
+  .card-content input, .card-content select { min-width: 0; width: 100%; }
+
+  /* Tables — scroll */
+  .table-wrap { overflow-x: auto; }
+  table { min-width: 600px; }
+
+  /* Modal — full width */
+  .modal { min-width: 0; width: 100%; max-width: 100vw; margin: 12px; }
+
+  /* Project cards */
+  .card[style*="min-width"] { min-width: 0 !important; flex: 1 1 100% !important; }
+
+  /* System health strip — scroll or wrap */
+  .system-health { overflow-x: auto; }
+
+  /* Page title */
+  .page-title { font-size: 22px; }
+
+  /* Flex headers on mobile */
+  .flex.items-center.justify-between { flex-wrap: wrap; gap: 8px; }
+
+  /* Agent/Task tables */
+  .table-wrap table { min-width: 700px; }
+
+  /* Activity feed */
+  .heartbeat-action { max-width: 120px; }
+}
+
+@media (max-width: 480px) {
+  .stats-grid { grid-template-columns: 1fr 1fr !important; }
+  .stat-card { padding: 12px; gap: 10px; }
+  .stat-icon { width: 32px; height: 32px; font-size: 14px; border-radius: 8px; }
+  .stat-value { font-size: 18px; }
+  .stat-label { font-size: 11px; }
+
+  /* Compact filter inputs */
+  .card-content input.w-40, .card-content select.w-28, .card-content select.w-24, .card-content select.w-32 {
+    width: calc(50% - 4px) !important;
+  }
+}
 
 /* Live dot animation */
 .live-dot {
