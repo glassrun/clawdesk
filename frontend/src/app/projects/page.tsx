@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { getProjects, createProject, deleteProject, updateProject, cloneProject, getProjectTemplates, type Project } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 
@@ -16,6 +17,7 @@ function timeAgo(dateStr: string | undefined) {
 }
 
 export default function ProjectsPage() {
+  const router = useRouter();
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editProject, setEditProject] = useState<Project | null>(null);
@@ -113,7 +115,7 @@ export default function ProjectsPage() {
       {projects.length === 0 ? <div className="text-center text-muted py-8">No projects</div> :
       <div className="flex gap-3 flex-wrap mt-4">
         {projects.map(p => (
-          <div key={p.id} className="card" style={{minWidth: '280px', flex: '1 1 300px', overflow: 'visible'}}>
+          <div key={p.id} className="card" style={{minWidth: '280px', flex: '1 1 300px', overflow: 'visible', cursor: 'pointer'}} onClick={() => router.push(`/projects/${p.id}`)}>
             <div className="card-content">
               <div className="flex items-center justify-between pb-2">
                 <div className="flex items-center gap-2">
@@ -121,7 +123,7 @@ export default function ProjectsPage() {
                   {p.is_template ? <span title="Template project" className="text-lg">📋</span> : null}
                 </div>
                 <div className="flex gap-1">
-                  <div style={{ position: "relative", overflow: "visible" }}>
+                  <div style={{ position: "relative", overflow: "visible" }} onClick={e => e.stopPropagation()}>
                     <button className="btn-sm" onClick={(e) => { e.stopPropagation(); setMenuOpen(menuOpen === p.id ? null : p.id); }}>⋮</button>
                     {menuOpen === p.id && (
                       <div className="dropdown-menu">

@@ -80,24 +80,15 @@ export interface Heartbeat {
   triggered_at: string;
 }
 
-export interface WorkflowStep {
-  id?: number;
-  task_title?: string;
-  output?: string;
-  status?: string;
-}
-
-export interface WorkflowRun {
-  id: number;
-  project_id: number;
-  title: string;
-  status: string;
-  current_step: number;
-  steps?: WorkflowStep[];
-  created_at: string;
-  completed_at?: string;
-  error?: string;
-  context?: Record<string, any>;
+export interface Task {
+  total_agents: number;
+  active_tasks: number;
+  completed_tasks: number;
+  failed_tasks: number;
+  total_spent: number;
+  agents: Agent[];
+  projects: Project[];
+  recent_heartbeats?: Heartbeat[];
 }
 
 export interface Dashboard {
@@ -143,7 +134,8 @@ export async function getProjects() {
 }
 
 export async function getProject(id: number) {
-  return api<{ project: Project; tasks: Task[] }>(`/api/projects/${id}`);
+  // Backend returns flat project object with tasks embedded as a tasks array
+  return api<Project & { tasks: Task[] }>(`/api/projects/${id}`);
 }
 
 export async function getTasks(params: Record<string, string> = {}) {
@@ -224,18 +216,6 @@ export async function retryTask(id: number) {
 
 export async function cancelTask(id: number) {
   return api<{ ok: boolean; task_id: number; title: string; status: string }>(`/api/tasks/${id}/cancel`, { method: 'POST' });
-}
-
-export async function getProjectWorkflows(projectId: number) {
-  return api<WorkflowRun[]>(`/api/projects/${projectId}/workflows`);
-}
-
-export async function createWorkflow(projectId: number, data: { title: string; steps: { order: number; title: string }[] }) {
-  return api<WorkflowRun>(`/api/projects/${projectId}/workflows`, { method: 'POST', body: JSON.stringify(data) });
-}
-
-export async function getWorkflowRun(projectId: number, runId: number) {
-  return api<WorkflowRun>(`/api/projects/${projectId}/workflows/${runId}`);
 }
 
 export async function approveApproval(id: number) {

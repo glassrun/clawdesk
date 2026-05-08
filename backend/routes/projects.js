@@ -333,43 +333,6 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     res.json({ ok: true, project_id: p.id, trigger_rules: rules });
   });
 
-  // ===================== Workflows =====================
-
-
-  router.get('/:id/workflows', (req, res) => {
-    const runs = db.loadWorkflowRuns().filter(r => r.project_id === +req.params.id);
-    res.json(runs.map(r => {
-      let steps = r.steps;
-      if (typeof steps === 'string') { try { steps = JSON.parse(steps); } catch { steps = []; } }
-      return { ...r, steps };
-    }));
-  });
-
-  router.post('/:id/workflows', async (req, res) => {
-    if (!db.loadProjects().find(p => p.id === +req.params.id)) return res.status(404).json({ error: 'project not found' });
-    const { title, steps } = req.body;
-    if (!title) return res.status(400).json({ error: 'title required' });
-    if (!Array.isArray(steps) || steps.length === 0) return res.status(400).json({ error: 'steps must be a non-empty array' });
-    const { createAndStartWorkflow } = require('../services/workflow-engine');
-    try {
-      const result = await createAndStartWorkflow(+req.params.id, title, steps);
-      res.status(201).json(result);
-    } catch (e) {
-      res.status(400).json({ error: e.message });
-    }
-  });
-
-  router.get('/:id/workflows/:runId', (req, res) => {
-    const runs = db.loadWorkflowRuns().filter(r => r.project_id === +req.params.id && r.id === +req.params.runId);
-    if (runs.length === 0) return res.status(404).json({ error: 'workflow run not found' });
-    const r = runs[0];
-    let steps = r.steps;
-    if (typeof steps === 'string') { try { steps = JSON.parse(steps); } catch { steps = []; } }
-    let context = r.context;
-    if (typeof context === 'string') { try { context = JSON.parse(context); } catch { context = {}; } }
-    res.json({ ...r, steps, context });
-  });
-
   // ── Capability registry ─────────────────────────────────────────────
   // Returns all agent CAPABILITY.md profiles for agents that have worked on this project.
   router.get('/:id/agents/capabilities', (req, res) => {

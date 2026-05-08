@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { getProject, updateProject, deleteProject, getProjectWorkflows, createWorkflow, getTasks, createTask, updateTask, deleteTask, runTask, getTaskResults, type Project, type Task } from "@/lib/api";
+import { getProject, updateProject, deleteProject, getTasks, createTask, updateTask, deleteTask, runTask, getTaskResults, type Project, type Task } from "@/lib/api";
 import { useStream } from "@/lib/useStream";
 
 function timeAgo(dateStr: string | undefined) {
@@ -16,31 +16,6 @@ function timeAgo(dateStr: string | undefined) {
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   return `${Math.floor(diff / 86400)}d ago`;
 }
-
-interface WorkflowStep {
-  id?: number;
-  task_title?: string;
-  output?: string;
-  status?: string;
-}
-
-interface WorkflowRun {
-  id: number;
-  project_id: number;
-  title: string;
-  status: string;
-  current_step: number;
-  steps?: WorkflowStep[];
-  created_at: string;
-  completed_at?: string;
-  error?: string;
-}
-
-const WORKFLOW_STATUS_CHIP: Record<string, string> = {
-  running: "status-in_progress",
-  completed: "status-done",
-  failed: "status-failed",
-};
 
 export default function ProjectDetailPage() {
   const params = useParams();
@@ -58,15 +33,6 @@ export default function ProjectDetailPage() {
   const [formDesc, setFormDesc] = useState("");
   const [formStatus, setFormStatus] = useState("active");
 
-  // Workflow state
-  const [workflows, setWorkflows] = useState<WorkflowRun[]>([]);
-  const [showWfModal, setShowWfModal] = useState(false);
-  const [wfTitle, setWfTitle] = useState("");
-  const [wfSteps, setWfSteps] = useState<string[]>([""]);
-  const [expandedWfRun, setExpandedWfRun] = useState<number | null>(null);
-  const [wfRunDetails, setWfRunDetails] = useState<Record<number, any>>({});
-  const [loadingWfDetails, setLoadingWfDetails] = useState<Record<number, boolean>>({});
-
   // Task state
   const [showAddTask, setShowAddTask] = useState(false);
   const [addTaskTitle, setAddTaskTitle] = useState("");
@@ -80,8 +46,8 @@ export default function ProjectDetailPage() {
   const loadProject = useCallback(async () => {
     try {
       const data = await getProject(projectId);
-      setProject(data.project);
-      setTasks(data.tasks || []);
+      setProject(data as Project);
+      setTasks(Array.isArray(data.tasks) ? data.tasks : []);
     } catch (e) {
       console.error(e);
     } finally {
@@ -89,31 +55,17 @@ export default function ProjectDetailPage() {
     }
   }, [projectId]);
 
-  const loadWorkflows = useCallback(async () => {
-    try {
-      const runs = await getProjectWorkflows(projectId);
-      setWorkflows(runs);
-    } catch (e) {
-      console.error(e);
-    }
-  }, [projectId]);
-
   useEffect(() => {
     loadProject();
-    loadWorkflows();
-  }, [loadProject, loadWorkflows]);
+  }, [loadProject]);
 
-  // Live workflow updates via SSE
   useEffect(() => {
     if (!lastMessage) return;
     const ev = lastMessage.event;
-    if (ev === "workflow_started" || ev === "workflow_step_started" || ev === "workflow_step_done" || ev === "workflow_step_error" || ev === "workflow_done") {
-      loadWorkflows();
-    }
     if (ev === "tasks" || ev === "projects") {
       loadProject();
     }
-  }, [lastMessage, loadProject, loadWorkflows]);
+  }, [lastMessage, loadProject]);
 
   const handleDelete = async () => {
     if (!confirm("Delete this project? This cannot be undone.")) return;
@@ -134,36 +86,6 @@ export default function ProjectDetailPage() {
     await updateProject(project.id, { title: formTitle, description: formDesc, status: formStatus });
     setShowEdit(false);
     loadProject();
-  };
-
-  const handleWfCreate = async () => {
-    if (!wfTitle.trim() || wfSteps.every((s) => !s.trim())) return;
-    const steps = wfSteps.map((s, i) => ({ order: i + 1, title: s.trim() })).filter((s) => s.title);
-    await createWorkflow(projectId, { title: wfTitle, steps });
-    setShowWfModal(false);
-    setWfTitle("");
-    setWfSteps([""]);
-    loadWorkflows();
-  };
-
-  const toggleWfRun = async (runId: number) => {
-    if (expandedWfRun === runId) {
-      setExpandedWfRun(null);
-      return;
-    }
-    setExpandedWfRun(runId);
-    if (!wfRunDetails[runId]) {
-      setLoadingWfDetails((p) => ({ ...p, [runId]: true }));
-      try {
-        const { getWorkflowRun } = await import("@/lib/api");
-        const detail = await getWorkflowRun(projectId, runId);
-        setWfRunDetails((p) => ({ ...p, [runId]: detail }));
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoadingWfDetails((p) => ({ ...p, [runId]: false }));
-      }
-    }
   };
 
   const handleTaskStatusChange = async (taskId: number, status: string) => {
@@ -246,7 +168,7 @@ export default function ProjectDetailPage() {
               <div
                 style={{
                   position: "absolute", right: 0, top: "100%", zIndex: 10,
-                  minWidth: "160px", background: "var(--surface2)", border: "1px solid var(--border)",
+                  minWidth: "160px", background: "var(--bg-card)", border: "1px solid var(--border)",
                   borderRadius: "8px", padding: "4px 0", boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
                 }}
                 onClick={(e) => e.stopPropagation()}
@@ -276,73 +198,6 @@ export default function ProjectDetailPage() {
               style={{ width: `${completionPct}%`, background: completionPct === 100 ? "var(--success)" : "var(--primary)" }}
             />
           </div>
-        </div>
-      </div>
-
-      {/* Workflow section */}
-      <div className="card mt-4">
-        <div className="card-content">
-          <div className="flex items-center justify-between mb-4">
-            <h2>Workflows</h2>
-            <button className="btn-primary btn-sm" onClick={() => setShowWfModal(true)}>+ Create Workflow</button>
-          </div>
-
-          {workflows.length === 0 ? (
-            <div className="text-center text-muted py-6">No workflow runs yet. Create one to get started.</div>
-          ) : (
-            <div className="flex gap-2 flex-wrap">
-              {workflows.map((wf) => (
-                <div key={wf.id} className="card" style={{ minWidth: "240px", flex: "1 1 240px" }}>
-                  <div className="card-content">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="font-medium text-sm">{wf.title}</div>
-                        <div className="text-xs text-muted">#{wf.id} · {timeAgo(wf.created_at)}</div>
-                      </div>
-                      <span className={`badge ${WORKFLOW_STATUS_CHIP[wf.status] || "badge"}`}>{wf.status}</span>
-                    </div>
-                    <div className="text-xs text-soft mt-2">
-                      Step {wf.current_step || 0}/{wf.steps?.length || 0}
-                    </div>
-                    <button className="btn-sm mt-2 w-full" onClick={() => toggleWfRun(wf.id)}>
-                      {expandedWfRun === wf.id ? "▲ Hide" : "▼ View"}
-                    </button>
-                    {expandedWfRun === wf.id && (
-                      <div className="mt-2">
-                        {loadingWfDetails[wf.id] ? (
-                          <div className="text-muted text-xs">Loading…</div>
-                        ) : wfRunDetails[wf.id] ? (
-                          <div>
-                            {wfRunDetails[wf.id].steps?.map((s: any, i: number) => (
-                              <div key={i} className="border-b py-2 text-xs">
-                                <div className="flex justify-between">
-                                  <span className="font-medium">Step {i + 1}</span>
-                                  <span className={`badge ${WORKFLOW_STATUS_CHIP[s.status] || "badge"}`}>{s.status || "pending"}</span>
-                                </div>
-                                {s.title && <div className="text-muted">{s.title}</div>}
-                                {s.output && <pre className="mt-1 whitespace-pre-wrap" style={{ fontSize: 11 }}>{s.output.slice(0, 300)}</pre>}
-                              </div>
-                            ))}
-                            {wfRunDetails[wf.id].context && Object.keys(wfRunDetails[wf.id].context).length > 0 && (
-                              <div className="mt-2">
-                                <div className="text-xs font-medium text-muted">Context:</div>
-                                <pre className="whitespace-pre-wrap text-xs" style={{ fontSize: 10, color: "var(--text-soft)" }}>
-                                  {JSON.stringify(wfRunDetails[wf.id].context, null, 2).slice(0, 400)}
-                                </pre>
-                              </div>
-                            )}
-                            {wfRunDetails[wf.id].error && (
-                              <div className="text-xs text-red-400 mt-2">Error: {wfRunDetails[wf.id].error}</div>
-                            )}
-                          </div>
-                        ) : null}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </div>
 
@@ -450,30 +305,6 @@ export default function ProjectDetailPage() {
             <div className="modal-footer">
               <button onClick={() => setShowEdit(false)}>Cancel</button>
               <button className="btn-primary" onClick={handleEditSave}>Save</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Create Workflow Modal */}
-      {showWfModal && (
-        <div className="modal-overlay" onClick={() => setShowWfModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header"><h3>Create Workflow</h3></div>
-            <div>
-              <label>Workflow Title</label>
-              <input value={wfTitle} onChange={(e) => setWfTitle(e.target.value)} placeholder="e.g. Deploy & Test" />
-              <label>Steps <span className="text-muted text-xs">(one per line)</span></label>
-              <textarea
-                value={wfSteps.join("\n")}
-                onChange={(e) => setWfSteps(e.target.value.split("\n"))}
-                rows={6}
-                placeholder={"Step 1: Build\nStep 2: Test\nStep 3: Deploy"}
-              />
-            </div>
-            <div className="modal-footer">
-              <button onClick={() => setShowWfModal(false)}>Cancel</button>
-              <button className="btn-primary" onClick={handleWfCreate}>Create &amp; Run</button>
             </div>
           </div>
         </div>

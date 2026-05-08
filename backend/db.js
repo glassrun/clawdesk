@@ -145,17 +145,6 @@ db.exec(`
     notes           TEXT    DEFAULT ''
   );
 
-  CREATE TABLE IF NOT EXISTS workflow_runs (
-    id              INTEGER PRIMARY KEY,
-    project_id      INTEGER NOT NULL,
-    title           TEXT    NOT NULL,
-    status          TEXT    DEFAULT 'running',
-    created_at      TEXT    NOT NULL,
-    completed_at    TEXT,
-    steps           TEXT    DEFAULT '[]',
-    current_step    INTEGER DEFAULT 0,
-    context         TEXT    DEFAULT '{}'
-  );
 `);
 
 function getVersion() {
@@ -220,7 +209,7 @@ function runMigrations() {
       addCol('tasks', 'requires_approval','INTEGER DEFAULT 0');
       addCol('projects', 'trigger_rules', "TEXT DEFAULT '[]'");
     },
-    // v7: add approvals table and workflow_runs table
+    // v7: add approvals table
     () => {
       const addCol = (table, col, type) => {
         try {
@@ -236,17 +225,6 @@ function runMigrations() {
         resolved_at     TEXT,
         resolved_by     TEXT,
         notes           TEXT    DEFAULT ''
-      )`);
-      db.exec(`CREATE TABLE IF NOT EXISTS workflow_runs (
-        id              INTEGER PRIMARY KEY,
-        project_id      INTEGER NOT NULL,
-        title           TEXT    NOT NULL,
-        status          TEXT    DEFAULT 'running',
-        created_at      TEXT    NOT NULL,
-        completed_at    TEXT,
-        steps           TEXT    DEFAULT '[]',
-        current_step    INTEGER DEFAULT 0,
-        context         TEXT    DEFAULT '{}'
       )`);
     },
     // v8: add tools_used to task_results
@@ -464,34 +442,6 @@ function insertApproval(a) {
   return id;
 }
 
-// ===================== Workflow Runs =====================
-
-function loadWorkflowRuns()    { return db.prepare("SELECT * FROM workflow_runs").all(); }
-function saveWorkflowRuns(data) {
-  db.exec("DELETE FROM workflow_runs");
-  const ins = db.prepare(`INSERT INTO workflow_runs (id,project_id,title,status,created_at,completed_at,steps,current_step,context)
-    VALUES (?,?,?,?,?,?,?,?,?)`);
-  for (const w of data) ins.run(w.id,w.project_id,w.title,w.status||'running',w.created_at,w.completed_at||null,typeof w.steps==='string'?w.steps:JSON.stringify(w.steps||[]),w.current_step||0,typeof w.context==='string'?w.context:JSON.stringify(w.context||{}));
-}
-function insertWorkflowRun(w) {
-  const id = nextId('workflow_runs');
-  db.prepare(`INSERT INTO workflow_runs (id,project_id,title,status,created_at,completed_at,steps,current_step,context)
-    VALUES (?,?,?,?,?,?,?,?,?)`)
-    .run(id, w.project_id, w.title, w.status||'running', w.created_at||new Date().toISOString(), w.completed_at||null,
-         typeof w.steps==='string'?w.steps:JSON.stringify(w.steps||[]),
-         w.current_step||0,
-         typeof w.context==='string'?w.context:JSON.stringify(w.context||{}));
-  return id;
-}
-function updateWorkflowRun(id, changes) {
-  const keys = Object.keys(changes).filter(k => k !== 'id');
-  const set = keys.map(k => `${k} = ?`).join(', ');
-  db.prepare(`UPDATE workflow_runs SET ${set} WHERE id = ?`).run(...keys.map(k => {
-    if (['steps','context'].includes(k) && typeof changes[k] !== 'string') return JSON.stringify(changes[k]);
-    return changes[k];
-  }), id);
-}
-
 // ===================== Heartbeats =====================
 
 function loadHeartbeats()    { return db.prepare("SELECT * FROM heartbeats ORDER BY id DESC").all(); }
@@ -510,8 +460,6 @@ function insertHeartbeat(h) {
     .run(id, h.agent_id||null, h.agent_name||'', h.openclaw_agent_id||'', h.triggered_at, h.action_taken||'', h.status||'ok');
   return id;
 }
-
-// ===================== Task Results =====================
 
 function loadTaskResults()    { return db.prepare("SELECT * FROM task_results ORDER BY id DESC").all(); }
 function saveTaskResults(data) {
@@ -596,10 +544,6 @@ module.exports = {
   loadApprovals,
   saveApprovals,
   insertApproval,
-  loadWorkflowRuns,
-  saveWorkflowRuns,
-  insertWorkflowRun,
-  updateWorkflowRun,
   vacuumDb,
   getDbStats,
   clearDeleted,

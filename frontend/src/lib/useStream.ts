@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { API_BASE } from "./api";
 
-export type StreamEvent = "tasks" | "heartbeat" | "connected" | "agents" | "projects" | "task_output" | "task_done" | "workflow_started" | "workflow_step_started" | "workflow_step_done" | "workflow_step_error" | "workflow_done";
+export type StreamEvent = "tasks" | "heartbeat" | "connected" | "agents" | "projects" | "task_output" | "task_done";
 
 export interface StreamMessage {
   event: StreamEvent;
