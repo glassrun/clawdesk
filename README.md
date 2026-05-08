@@ -2,20 +2,51 @@
 
 ![ClawDesk](docs/lobsters_working_desk.png)
 
-Manage your OpenClaw agent teams from a single dashboard. Define projects, assign tasks, track progress, and let agents work autonomously on heartbeats.
+Manage your OpenClaw agent teams from a single dashboard. Define projects, assign tasks, track progress, and let agents work autonomously on heartbeats. Works on desktop and mobile.
 
 ## Quick Start
 
-```bash
-cd clawdesk
-cd backend && npm install && npm start
-# → http://localhost:3777
+### 1. Clone & install
 
-cd frontend && npm install && npm run dev
-# → http://localhost:3778
+```bash
+git clone https://github.com/glassrun/clawdesk.git
+cd clawdesk
 ```
 
-Requires [OpenClaw](https://docs.openclaw.ai) installed with the gateway running (`openclaw gateway start`).
+### 2. Backend
+
+```bash
+cd backend && npm install && npm start
+# → http://localhost:3777
+```
+
+### 3. Frontend
+
+```bash
+cd frontend && npm install
+cp .env.local.example .env.local   # edit IP if needed
+npm run dev
+# → http://localhost:3000
+```
+
+### 4. Start OpenClaw gateway
+
+```bash
+openclaw gateway start
+```
+
+Requires [OpenClaw](https://docs.openclaw.ai) installed.
+
+## Frontend Configuration
+
+The frontend reads two values from `frontend/.env.local`:
+
+| Variable | Description |
+|---|---|
+| `NEXT_PUBLIC_API_URL` | Backend API URL (e.g. `http://192.168.1.100:3777`) |
+| `ALLOWED_ORIGINS` | Comma-separated hosts allowed to access the dev server (e.g. `192.168.1.100,localhost`) |
+
+Copy `.env.local.example` to `.env.local` and update the IP to match your machine. This avoids hardcoding IPs in `next.config.js`.
 
 ## Project Structure
 
@@ -29,7 +60,7 @@ clawdesk/
     lib/             # Task handoff parsing
     data/            # SQLite database file
     public/          # Static files
-  frontend/          # Next.js dashboard
+  frontend/          # Next.js dashboard (responsive, mobile-friendly)
   docs/              # Architecture docs
   skills/            # OpenClaw skill references
 ```
