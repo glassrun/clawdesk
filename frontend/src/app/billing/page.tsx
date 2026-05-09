@@ -57,11 +57,13 @@ export default function BillingPage() {
     setLoading(true);
     try {
       const [agts, prjs] = await Promise.all([getAgents(), getProjects()]);
-      setAgents(agts);
-      setProjects(prjs);
+      const agentList = agts.agents ?? [];
+      const projectList = prjs.projects ?? [];
+      setAgents(agentList);
+      setProjects(projectList);
 
       // Fetch per-agent stats + aggregate project costs
-      const agentCostPromises = agts.map(async (a) => {
+      const agentCostPromises = agentList.map(async (a) => {
         try {
           const res = await fetch(`/api/agents/${a.id}/stats`);
           if (!res.ok) return null;
@@ -77,7 +79,7 @@ export default function BillingPage() {
         } catch { return null; }
       });
 
-      const projectCostPromises = prjs.map(async (p) => {
+      const projectCostPromises = projectList.map(async (p) => {
         try {
           const res = await fetch(`/api/projects/${p.id}/stats`);
           if (!res.ok) return null;
@@ -103,9 +105,10 @@ export default function BillingPage() {
       let daily: DailyCost[] = [];
       if (resultsRes.ok) {
         const allResults = await resultsRes.json();
+        const results = allResults.results ?? [];
         const byDay: Record<string, DailyCost> = {};
         const now = new Date();
-        for (const r of allResults) {
+        for (const r of results) {
           if (!r.executed_at || !r.cost) continue;
           const day = r.executed_at.split("T")[0];
           if (!byDay[day]) byDay[day] = { day, cost: 0, runs: 0 };
