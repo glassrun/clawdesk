@@ -116,12 +116,9 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
 
   // All task results (for billing/analytics)
   router.get('/results-all', (req, res) => {
-    const results = db.loadTaskResults();
-    if (req.query.agent_id) {
-      const aid = +req.query.agent_id;
-      return res.json(results.filter(r => r.agent_id === aid));
-    }
-    res.json(results);
+    let results = db.loadTaskResults();
+    if (req.query.agent_id) results = results.filter(r => r.agent_id === +req.query.agent_id);
+    res.json({ results });
   });
 
   // Task by ID

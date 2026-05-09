@@ -34,7 +34,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
         total_cost_usd: parseFloat(totalCost.toFixed(6)),
       };
     });
-    res.json(result);
+    res.json({ agents: result });
   });
 
   router.post('/', async (req, res) => {
@@ -52,11 +52,11 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
       agents.push(agent);
       db.saveAgents(agents);
       broadcastSSE('agents', { action: 'created', agent });
-      res.status(201).json({ ...agent, openclaw: oc });
+      res.status(201).json({ agent, openclaw: oc });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
-  router.get('/:id', (req, res) => { const a = db.loadAgents().find(x => x.id === +req.params.id); a ? res.json(a) : res.status(404).json({ error: 'not found' }); });
+  router.get('/:id', (req, res) => { const a = db.loadAgents().find(x => x.id === +req.params.id); a ? res.json({ agent: a }) : res.status(404).json({ error: 'not found' }); });
 
   router.get('/:id/stats', (req, res) => {
     const agent = db.loadAgents().find(x => x.id === +req.params.id);
@@ -111,7 +111,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     Object.assign(a, { name: name ?? a.name, status: status ?? a.status, budget_limit: budget_limit ?? a.budget_limit, budget_spent: budget_spent ?? a.budget_spent, heartbeat_enabled: heartbeat_enabled !== undefined ? (heartbeat_enabled ? 1 : 0) : a.heartbeat_enabled, heartbeat_interval: Math.max(1, +(heartbeat_interval ?? a.heartbeat_interval)) });
     db.saveAgents(agents);
     broadcastSSE('agents', { action: 'updated', agent: a });
-    res.json(a);
+    res.json({ agent: a });
   });
 
   router.delete('/:id', async (req, res) => {
@@ -150,7 +150,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     a.status = 'active';
     a.heartbeat_enabled = 1;
     db.saveAgents(agents);
-    res.json({ ok: true, id: a.id, name: a.name, status: a.status });
+    res.json({ agent: { ok: true, id: a.id, name: a.name, status: a.status } });
   });
 
   // GET /api/agents/:id/capabilities — return tools and skills available to this agent

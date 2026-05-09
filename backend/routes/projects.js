@@ -8,11 +8,11 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     if (req.query.status) projects = projects.filter(p => p.status === req.query.status);
     if (req.query.template === '1') projects = projects.filter(p => p.is_template);
     const tasks = db.loadTasks();
-    res.json(projects.map(p => {
+    res.json({ projects: projects.map(p => {
       const pt = tasks.filter(t => t.project_id === p.id);
       const done = pt.filter(t => t.status === 'done').length;
       return { ...p, task_total: pt.length, task_done: done, completion_pct: pt.length > 0 ? Math.round(done / pt.length * 100) : 0 };
-    }));
+    }) });
   });
 
   router.post('/', (req, res) => {
@@ -31,7 +31,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     projects.push(p);
     db.saveProjects(projects);
     broadcastSSE('projects', { action: 'created', project: p });
-    res.status(201).json(p);
+    res.status(201).json({ project: p });
   });
 
   router.get('/:id', (req, res) => {
@@ -106,7 +106,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     Object.assign(p, { title: title ?? p.title, description: description ?? p.description, workspace_path: workspace_path ?? p.workspace_path, status: status ?? p.status, is_template: is_template !== undefined ? (is_template ? 1 : 0) : p.is_template });
     db.saveProjects(projects);
     broadcastSSE('projects', { action: 'updated', project: p });
-    res.json(p);
+    res.json({ project: p });
   });
 
   router.post('/:id/reopen', (req, res) => {
@@ -177,7 +177,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     }
     db.saveTasks(newTasks);
     broadcastSSE('projects', { action: 'created', project: newProject });
-    res.status(201).json({ ...newProject, task_total: sourceTasks.length, task_done: 0, completion_pct: 0 });
+    res.status(201).json({ project: { ...newProject, task_total: sourceTasks.length, task_done: 0, completion_pct: 0 } });
   });
 
   router.delete('/:id', (req, res) => {
@@ -197,6 +197,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     if (req.query.priority) tasks = tasks.filter(t => t.priority === req.query.priority);
     if (req.query.agent_id) tasks = tasks.filter(t => t.assigned_agent_id === +req.query.agent_id);
     if (req.query.search) { const s = req.query.search.toLowerCase(); tasks = tasks.filter(t => (t.title || '').toLowerCase().includes(s)); }
+    const allTasks = db.loadTasks();
     res.json(tasks.map(t => {
       const a = agents.find(x => x.id === t.assigned_agent_id);
       const cb = agents.find(x => x.id === t.created_by_agent_id);

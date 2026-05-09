@@ -116,16 +116,16 @@ export async function getSystemStats() {
 }
 
 export async function getAgents() {
-  return api<Agent[]>('/api/agents');
+  return api<{ agents: Agent[] }>('/api/agents');
 }
 
 export async function getProjects() {
-  return api<Project[]>('/api/projects');
+  return api<{ projects: Project[] }>('/api/projects');
 }
 
 export async function getProject(id: number) {
-  // Backend returns flat project object with tasks embedded as a tasks array
-  return api<Project & { tasks: Task[] }>(`/api/projects/${id}`);
+  // Backend returns { project: { ...project, tasks: [...] } }
+  return api<{ project: Project & { tasks: Task[] } }>(`/api/projects/${id}`);
 }
 
 export async function getTasks(params: Record<string, string> = {}) {
@@ -144,7 +144,7 @@ export async function syncAgents() {
 }
 
 export async function createAgent(data: { job_title: string; job_description?: string }) {
-  return api<Agent>('/api/agents', { method: 'POST', body: JSON.stringify(data) });
+  return api<{ agent: Agent; openclaw: any }>('/api/agents', { method: 'POST', body: JSON.stringify(data) });
 }
 
 export async function updateAgent(id: number, data: Partial<Agent>) {
@@ -156,7 +156,7 @@ export async function deleteAgent(id: number) {
 }
 
 export async function createProject(data: { title: string; description?: string; workspace_path?: string; status?: string; is_template?: boolean }) {
-  return api<Project>('/api/projects', { method: 'POST', body: JSON.stringify(data) });
+  return api<{ project: Project }>('/api/projects', { method: 'POST', body: JSON.stringify(data) });
 }
 
 export async function cloneProject(id: number) {
@@ -193,7 +193,7 @@ export async function runTask(id: number) {
 }
 
 export async function getTaskResults(id: number) {
-  return api<{ task_id: number; input: string; output: string; executed_at: string; status?: string; input_tokens?: number; output_tokens?: number; cache_read_tokens?: number; cost?: number }[]>(`/api/tasks/${id}/results`);
+  return api<{ results: { task_id: number; input: string; output: string; executed_at: string; status?: string; input_tokens?: number; output_tokens?: number; cache_read_tokens?: number; cost?: number }[] }>(`/api/tasks/${id}/results`);
 }
 
 export async function tickHeartbeats() {
@@ -224,7 +224,7 @@ export async function rejectApproval(id: number) {
 
 export async function getApprovals(params: Record<string, string> = {}) {
   const query = new URLSearchParams(params).toString();
-  return api<any[]>(`/api/approvals?${query}`);
+  return api<{ approvals: any[] }>(`/api/approvals?${query}`);
 }
 
 export async function getTools() {

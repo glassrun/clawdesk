@@ -116,7 +116,7 @@ export default function TasksPage() {
   const loadApprovals = useCallback(async () => {
     try {
       const data = await getApprovals({ status: "pending" });
-      setApprovals(Array.isArray(data) ? data : []);
+      setApprovals(data.approvals ?? []);
     } catch (e) { console.error(e); }
   }, []);
 
@@ -151,8 +151,8 @@ export default function TasksPage() {
     setRunningTask(id);
     try {
       await runTask(id);
-      const results = await getTaskResults(id);
-      setTaskResults(prev => ({ ...prev, [id]: results }));
+      const { results } = await getTaskResults(id);
+      setTaskResults(prev => ({ ...prev, [id]: results ?? [] }));
     } catch (e) { console.error(e); }
     finally { setRunningTask(null); loadData(); }
   };
@@ -177,8 +177,8 @@ export default function TasksPage() {
 
   const toggleResults = async (id: number) => {
     if (expandedResults === id) { setExpandedResults(null); return; }
-    const results = await getTaskResults(id);
-    setTaskResults(prev => ({ ...prev, [id]: results }));
+    const { results } = await getTaskResults(id);
+    setTaskResults(prev => ({ ...prev, [id]: results ?? [] }));
     setExpandedResults(id);
   };
 

@@ -38,7 +38,7 @@ export default function ProjectsPage() {
     queryFn: () => getProjectTemplates(),
   });
 
-  const projects = projectsData || [];
+  const projects = projectsData?.projects ?? [];
   const templates = templatesData || [];
 
   useEffect(() => {

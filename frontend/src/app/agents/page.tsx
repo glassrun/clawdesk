@@ -60,7 +60,7 @@ export default function AgentsPage() {
     setLoading(true);
     try {
       const res = await getAgents();
-      setAgents(res);
+      setAgents(res.agents ?? []);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, []);
@@ -82,8 +82,8 @@ export default function AgentsPage() {
     } catch (e) { console.error('[Sync]', e); }
     try {
       const data = await getAgents();
-      console.log('[LoadData] got', data.length, 'agents');
-      setAgents(data);
+      console.log('[LoadData] got', data.agents?.length, 'agents');
+      setAgents(data.agents ?? []);
     } catch (e) { console.error('[LoadData]', e); }
     setSyncing(false);
   };
