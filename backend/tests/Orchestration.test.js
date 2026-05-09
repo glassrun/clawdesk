@@ -507,8 +507,8 @@ describe('Approvals API', () => {
     const app = createApp(dbWrapper);
     const { status, body } = await request(app, 'POST', '/api/approvals', { task_id: 1 });
     expect(status).toBe(201);
-    expect(body.task_id).toBe(1);
-    expect(body.status).toBe('pending');
+    expect(body.approval.task_id).toBe(1);
+    expect(body.approval.status).toBe('pending');
     closeDb(rawDb);
   });
 
@@ -543,8 +543,8 @@ describe('Approvals API', () => {
     const app = createApp(dbWrapper);
     const { status, body } = await request(app, 'GET', '/api/approvals?task_id=1');
     expect(status).toBe(200);
-    expect(body.length).toBe(1);
-    expect(body[0].task_id).toBe(1);
+    expect(body.approvals.length).toBe(1);
+    expect(body.approvals[0].task_id).toBe(1);
     closeDb(rawDb);
   });
 
@@ -560,7 +560,7 @@ describe('Approvals API', () => {
     const app = createApp(dbWrapper);
     const { status, body } = await request(app, 'PUT', '/api/approvals/1', { status: 'approved' });
     expect(status).toBe(200);
-    expect(body.status).toBe('approved');
+    expect(body.approval.status).toBe('approved');
     const task = rawDb.prepare('SELECT * FROM tasks WHERE id=1').get();
     expect(task.status).toBe('pending');
     closeDb(rawDb);
@@ -578,7 +578,7 @@ describe('Approvals API', () => {
     const app = createApp(dbWrapper);
     const { status, body } = await request(app, 'PUT', '/api/approvals/1', { status: 'rejected' });
     expect(status).toBe(200);
-    expect(body.status).toBe('rejected');
+    expect(body.approval.status).toBe('rejected');
     closeDb(rawDb);
   });
 

@@ -6,7 +6,7 @@ module.exports = function(router, { db }) {
     if (req.query.task_id) approvals = approvals.filter(a => String(a.task_id) === String(req.query.task_id));
     if (req.query.status) approvals = approvals.filter(a => a.status === req.query.status);
     approvals.sort((a, b) => b.id - a.id);
-    res.json(approvals);
+    res.json({ approvals });
   });
 
   // Create an approval request
@@ -25,7 +25,7 @@ module.exports = function(router, { db }) {
       resolved_by: null,
       notes: notes || '',
     });
-    res.status(201).json({ id, task_id: +task_id, status: 'pending', requested_at: new Date().toISOString() });
+    res.status(201).json({ approval: { id, task_id: +task_id, status: 'pending', requested_at: new Date().toISOString() } });
   });
 
   // Get approval by ID
@@ -33,7 +33,7 @@ module.exports = function(router, { db }) {
     const approvals = db.loadApprovals();
     const a = approvals.find(x => x.id === +req.params.id);
     if (!a) return res.status(404).json({ error: 'not found' });
-    res.json(a);
+    res.json({ approval: a });
   });
 
   // Approve or reject
@@ -75,6 +75,6 @@ module.exports = function(router, { db }) {
       }
     }
 
-    res.json({ ok: true, id: a.id, task_id: a.task_id, status: a.status, resolved_at: a.resolved_at });
+    res.json({ approval: { ok: true, id: a.id, task_id: a.task_id, status: a.status, resolved_at: a.resolved_at } });
   });
 };

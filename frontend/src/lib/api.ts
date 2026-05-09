@@ -209,14 +209,14 @@ export async function cancelTask(id: number) {
 }
 
 export async function approveApproval(id: number) {
-  return api<{ ok: boolean; id: number; task_id: number; status: string; resolved_at: string }>(
+  return api<{ approval: { ok: boolean; id: number; task_id: number; status: string; resolved_at: string } }>(
     `/api/approvals/${id}`,
     { method: 'PUT', body: JSON.stringify({ status: 'approved' }) }
   );
 }
 
 export async function rejectApproval(id: number) {
-  return api<{ ok: boolean; id: number; task_id: number; status: string; resolved_at: string }>(
+  return api<{ approval: { ok: boolean; id: number; task_id: number; status: string; resolved_at: string } }>(
     `/api/approvals/${id}`,
     { method: 'PUT', body: JSON.stringify({ status: 'rejected' }) }
   );
