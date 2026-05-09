@@ -55,10 +55,9 @@ export interface Task {
   assigned_agent_id?: number;
   agent_name?: string;
   openclaw_agent_id?: string;
-  dependency_id?: number;
   dependency_ids?: string; // JSON array of task ids
   dep_titles?: { id: number; title: string }[];
-  dep_title?: string; // single dependency title (from backend)
+  dep_title?: string; // first dependency title
   creates_agent?: string;
   created_by_agent_slug?: string;
   scheduled_at?: string;

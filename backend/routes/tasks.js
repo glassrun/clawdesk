@@ -72,6 +72,15 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     const { tasks } = req.body;
     if (!Array.isArray(tasks) || tasks.length === 0) return res.status(400).json({ error: 'tasks must be a non-empty array' });
     if (tasks.length > 200) return res.status(400).json({ error: 'max 200 tasks per batch' });
+    // Validate dependency_ids upfront
+    for (const t of tasks) {
+      if (t.dependency_ids != null) {
+        if (Array.isArray(t.dependency_ids)) { /* valid */ }
+        else if (typeof t.dependency_ids === 'string') {
+          try { JSON.parse(t.dependency_ids); } catch { return res.status(400).json({ error: 'task ' + t.title + ' has invalid dependency_ids JSON' }); }
+        } else { return res.status(400).json({ error: 'task ' + t.title + ' has malformed dependency_ids' }); }
+      }
+    }
     const ids = db.insertTaskBatch(tasks);
     broadcastTaskUpdate(db.loadTasks());
     res.json({ ok: true, count: ids.length, ids });
@@ -85,15 +94,15 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     if (req.query.agent_id) tasks = tasks.filter(t => String(t.assigned_agent_id) === String(req.query.agent_id));
     if (req.query.priority) tasks = tasks.filter(t => t.priority === req.query.priority);
     if (req.query.project_id) tasks = tasks.filter(t => String(t.project_id) === String(req.query.project_id));
-    if (req.query.search) { const s = req.query.search.toLowerCase(); tasks = tasks.filter(t => t.title.toLowerCase().includes(s)); }
+    if (req.query.search) { const s = req.query.search.toLowerCase(); tasks = tasks.filter(t => (t.title || '').toLowerCase().includes(s)); }
     const sortBy = req.query.sort_by || 'priority';
     const sortDir = req.query.sort_dir === 'desc' ? -1 : 1;
     const pri = { high: 0, medium: 1, low: 2 };
     const sortFns = {
       priority: (a, b) => ((pri[a.priority] ?? 1) - (pri[b.priority] ?? 1)) * sortDir,
       created_at: (a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0) * sortDir,
-      title: (a, b) => a.title.localeCompare(b.title) * sortDir,
-      status: (a, b) => a.status.localeCompare(b.status) * sortDir,
+      title: (a, b) => (a.title || '').localeCompare(b.title || '') * sortDir,
+      status: (a, b) => (a.status || '').localeCompare(b.status || '') * sortDir,
       id: (a, b) => (a.id - b.id) * sortDir
     };
     tasks.sort(sortFns[sortBy] || sortFns.priority);
@@ -132,26 +141,14 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     const taskId = +req.params.id;
     const t = tasks.find(x => x.id === taskId);
     if (!t) return res.status(404).json({ error: 'not found' });
-    const { assigned_agent_id, title, description, status, dependency_id, dependency_ids, creates_agent, created_by_agent_id, priority, repeat, scheduled_at, requires_approval } = req.body;
-    const resolveDepId = (v) => {
-      if (v === '' || v === null || v === undefined) return null;
-      if (typeof v === 'string') v = v.trim();
-      return +v || null;
-    };
+    const { assigned_agent_id, title, description, status, dependency_ids, creates_agent, created_by_agent_id, priority, repeat, scheduled_at, requires_approval } = req.body;
     const resolveDepIds = (v) => {
       if (v === '' || v === null || v === undefined) return null;
       if (Array.isArray(v)) return v.map(x => +x).filter(x => x);
-      if (typeof v === 'string') return JSON.parse(v);
+      if (typeof v === 'string') { try { return JSON.parse(v); } catch { return null; } }
       return null;
     };
-    const newDepId = dependency_id !== undefined ? resolveDepId(dependency_id) : t.dependency_id;
-    const newDepIds = dependency_ids !== undefined ? resolveDepIds(dependency_ids) : (t.dependency_ids ? JSON.parse(t.dependency_ids) : null);
-    if (newDepId && newDepId !== t.dependency_id) {
-      const allTasks = db.loadTasks();
-      const dep = allTasks.find(d => d.id === newDepId);
-      if (!dep) return res.status(400).json({ error: `dependency task #${newDepId} not found` });
-      if (dep.project_id !== t.project_id) return res.status(400).json({ error: `dependency task #${newDepId} belongs to a different project` });
-    }
+    const newDepIds = dependency_ids !== undefined ? resolveDepIds(dependency_ids) : (() => { try { const p = JSON.parse(t.dependency_ids); return Array.isArray(p) ? p : null; } catch { return null; } })();
     if (newDepIds) {
       const allTasks = db.loadTasks();
       for (const did of newDepIds) {
@@ -167,11 +164,10 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
           visited.add(id);
           const parent = allTasks.find(d => d.id === id);
           if (!parent) break;
-          id = parent.dependency_id;
           if (parent.dependency_ids) {
             try {
               const multi = JSON.parse(parent.dependency_ids);
-              for (const mid of multi) { if (checkCircular(mid)) return true; }
+              if (Array.isArray(multi)) { for (const mid of multi) { if (checkCircular(mid)) return true; } }
             } catch {}
           }
         }
@@ -181,11 +177,10 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     }
     const oldStatus = t.status;
     Object.assign(t, {
-      assigned_agent_id: assigned_agent_id !== undefined ? resolveAgent(assigned_agent_id) : t.assigned_agent_id,
+      assigned_agent_id: assigned_agent_id !== undefined ? (+assigned_agent_id || null) : t.assigned_agent_id,
       title: title ?? t.title,
       description: description ?? t.description,
       status: status ?? t.status,
-      dependency_id: dependency_id !== undefined ? resolveDepId(dependency_id) : t.dependency_id,
       dependency_ids: dependency_ids !== undefined ? (newDepIds ? JSON.stringify(newDepIds) : null) : t.dependency_ids,
       creates_agent: creates_agent !== undefined ? creates_agent : t.creates_agent,
       created_by_agent_id: created_by_agent_id !== undefined ? created_by_agent_id : t.created_by_agent_id,
@@ -223,7 +218,13 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     if (!t) return res.status(404).json({ error: 'not found' });
     let cleared = 0;
     for (const task of tasks) {
-      if (task.dependency_id === t.id) { task.dependency_id = null; cleared++; }
+      if (task.dependency_ids) {
+        try {
+          const ids = JSON.parse(task.dependency_ids);
+          const idx = ids.indexOf(t.id);
+          if (idx !== -1) { ids.splice(idx, 1); task.dependency_ids = ids.length ? JSON.stringify(ids) : null; cleared++; }
+        } catch {}
+      }
     }
     if (cleared > 0) db.saveTasks(tasks);
     db.remove('tasks', { id: t.id });
@@ -253,20 +254,21 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
         const dep = allTasks.find(t => t.id === current);
         if (!dep) { chain.push({ id: current, title: '[deleted]' }); return; }
         chain.push({ id: dep.id, title: dep.title, status: dep.status });
-        current = dep.dependency_id;
         if (dep.dependency_ids) {
           try {
             const multi = JSON.parse(dep.dependency_ids);
-            for (const mid of multi) collectChain(mid);
-          } catch {}
-        }
+            if (Array.isArray(multi) && multi.length) { current = multi[0]; for (const mid of multi.slice(1)) collectChain(mid); }
+            else { current = null; }
+          } catch { current = null; }
+        } else { current = null; }
       }
     };
-    collectChain(task.dependency_id);
+    const safeDeps = (s) => { try { const p = JSON.parse(s); return Array.isArray(p) ? p : []; } catch { return []; } };
+    const deps = safeDeps(task.dependency_ids);
+    if (deps.length) collectChain(deps[0]);
     const dependents = allTasks.filter(t => {
-      if (t.dependency_id === task.id) return true;
       if (t.dependency_ids) {
-        try { return JSON.parse(t.dependency_ids).includes(task.id); } catch {}
+        try { const p = JSON.parse(t.dependency_ids); return Array.isArray(p) && p.includes(task.id); } catch {}
       }
       return false;
     }).map(t => ({ id: t.id, title: t.title, status: t.status }));
@@ -296,16 +298,18 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
         const dep = tasks.find(t => t.id === current);
         if (!dep) { chain.push({ id: current, title: '[deleted]', status: 'missing' }); return; }
         chain.push({ id: dep.id, title: dep.title, status: dep.status, priority: dep.priority });
-        current = dep.dependency_id;
         if (dep.dependency_ids) {
           try {
             const multi = JSON.parse(dep.dependency_ids);
-            for (const mid of multi) collectChain(mid);
-          } catch {}
-        }
+            if (Array.isArray(multi) && multi.length) { current = multi[0]; for (const mid of multi.slice(1)) collectChain(mid); }
+            else { current = null; }
+          } catch { current = null; }
+        } else { current = null; }
       }
     };
-    collectChain(task.dependency_id);
+    const safeDeps = (s) => { try { const p = JSON.parse(s); return Array.isArray(p) ? p : []; } catch { return []; } };
+    const deps = safeDeps(task.dependency_ids);
+    if (deps.length) collectChain(deps[0]);
     res.json({ task_id: task.id, title: task.title, status: task.status, chain_length: chain.length, chain, blocked: chain.some(c => c.status !== 'done') });
   });
 
@@ -314,9 +318,8 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     if (!task) return res.status(404).json({ error: 'not found' });
     const agents = db.loadAgents();
     const dependents = db.loadTasks().filter(t => {
-      if (t.dependency_id === task.id) return true;
       if (t.dependency_ids) {
-        try { return JSON.parse(t.dependency_ids).includes(task.id); } catch {}
+        try { const p = JSON.parse(t.dependency_ids); return Array.isArray(p) && p.includes(task.id); } catch {}
       }
       return false;
     }).map(t => {
@@ -334,13 +337,13 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
       const agents = db.loadAgents();
       if (!agents.find(a => a.id === orig.assigned_agent_id)) return res.status(400).json({ error: 'assigned agent no longer exists - reassign before duplicating' });
     }
+    const safeDepIds = (s) => { try { const p = JSON.parse(s); return Array.isArray(p) && p.length ? JSON.stringify(p) : null; } catch { return null; } };
     const t = {
       id: nextId('tasks'), project_id: orig.project_id,
       assigned_agent_id: orig.assigned_agent_id,
       title: req.body.title || (orig.title + ' (copy)'),
       description: orig.description, status: 'pending',
-      dependency_id: orig.dependency_id,
-      dependency_ids: orig.dependency_ids,
+      dependency_ids: safeDepIds(orig.dependency_ids),
       creates_agent: orig.creates_agent,
       created_by_agent_id: orig.created_by_agent_id,
       priority: orig.priority,

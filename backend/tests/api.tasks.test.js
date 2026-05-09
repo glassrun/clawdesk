@@ -82,8 +82,8 @@ function createTestApp(db) {
     const sortFns = {
       priority: (a, b) => ((pri[a.priority] ?? 1) - (pri[b.priority] ?? 1)) * sortDir,
       created_at: (a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0) * sortDir,
-      title: (a, b) => a.title.localeCompare(b.title) * sortDir,
-      status: (a, b) => a.status.localeCompare(b.status) * sortDir,
+      title: (a, b) => (a.title || '').localeCompare(b.title || '') * sortDir,
+      status: (a, b) => (a.status || '').localeCompare(b.status || '') * sortDir,
       id: (a, b) => (a.id - b.id) * sortDir
     };
     tasks.sort(sortFns[sortBy] || sortFns.priority);
@@ -110,7 +110,7 @@ function createTestApp(db) {
     const t = db.prepare('SELECT * FROM tasks WHERE id = ? AND deleted_at IS NULL').get(+req.params.id);
     if (!t) return res.status(404).json({ error: 'not found' });
     const maxId = db.prepare('SELECT MAX(id) as m FROM task_results').get()?.m || 0;
-    db.prepare('INSERT INTO task_results (id, task_id, agent_id, output, created_at) VALUES (?, ?, ?, ?, ?)').run(maxId + 1, t.id, agent_id || null, note, new Date().toISOString());
+    db.prepare('INSERT INTO task_results (id, task_id, agent_id, output, executed_at) VALUES (?, ?, ?, ?, ?)').run(maxId + 1, t.id, agent_id || null, note, new Date().toISOString());
     res.json({ ok: true, task_id: t.id, note });
   });
 
@@ -121,7 +121,6 @@ function createTestApp(db) {
     const agents = db.prepare('SELECT * FROM agents').all();
     const allTasks = db.prepare('SELECT * FROM tasks WHERE deleted_at IS NULL').all();
     const dependents = allTasks.filter(t => {
-      if (String(t.dependency_id) === String(task.id)) return true;
       if (t.dependency_ids) {
         try { return JSON.parse(t.dependency_ids).includes(task.id); } catch {}
       }
@@ -147,16 +146,17 @@ function createTestApp(db) {
         const dep = allTasks.find(t => t.id === current);
         if (!dep) { chain.push({ id: current, title: '[deleted]', status: 'missing' }); return; }
         chain.push({ id: dep.id, title: dep.title, status: dep.status, priority: dep.priority });
-        current = dep.dependency_id;
         if (dep.dependency_ids) {
           try {
             const multi = JSON.parse(dep.dependency_ids);
-            for (const mid of multi) collectChain(mid);
-          } catch {}
-        }
+            if (multi.length) current = multi[0];
+            for (const mid of multi.slice(1)) collectChain(mid);
+          } catch { current = null; }
+        } else { current = null; }
       }
     };
-    collectChain(task.dependency_id);
+    const deps = task.dependency_ids ? JSON.parse(task.dependency_ids) : [];
+    if (deps.length) collectChain(deps[0]);
     res.json({ task_id: task.id, title: task.title, status: task.status, chain_length: chain.length, chain, blocked: chain.some(c => c.status !== 'done') });
   });
 
@@ -335,12 +335,12 @@ test('POST /api/tasks/bulk — bulk status update', async () => {
   db.prepare('INSERT INTO tasks (id, project_id, title, status, priority, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(2, 1, 'T2', 'pending', 'medium', new Date().toISOString());
   const app = createTestApp(db);
   const { status, body } = await request(app, 'POST', '/api/tasks/bulk', { task_ids: [1, 2], status: 'done' });
-  closeDb(db);
   assertEqual(status, 200);
   assertEqual(body.ok, true);
   assertEqual(body.updated, 2);
   const t1 = db.prepare('SELECT status FROM tasks WHERE id = 1').get();
   assertEqual(t1.status, 'done');
+  closeDb(db);
 });
 
 test('POST /api/tasks/bulk — validates max 100', async () => {
@@ -428,7 +428,7 @@ test('GET /api/tasks/:id/dependents — returns tasks blocked by this one', asyn
   const db = getDb();
   db.prepare('INSERT INTO projects (id, title, created_at) VALUES (?, ?, ?)').run(1, 'P', new Date().toISOString());
   db.prepare('INSERT INTO tasks (id, project_id, title, status, priority, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(1, 1, 'Parent', 'pending', 'high', new Date().toISOString());
-  db.prepare('INSERT INTO tasks (id, project_id, title, status, priority, dependency_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(2, 1, 'Child', 'pending', 'medium', 1, new Date().toISOString());
+  db.prepare('INSERT INTO tasks (id, project_id, title, status, priority, dependency_ids, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(2, 1, 'Child', 'pending', 'medium', '[1]', new Date().toISOString());
   const app = createTestApp(db);
   const { status, body } = await request(app, 'GET', '/api/tasks/1/dependents');
   closeDb(db);
@@ -450,8 +450,8 @@ test('GET /api/tasks/:id/chain — returns dependency chain', async () => {
   const db = getDb();
   db.prepare('INSERT INTO projects (id, title, created_at) VALUES (?, ?, ?)').run(1, 'P', new Date().toISOString());
   db.prepare('INSERT INTO tasks (id, project_id, title, status, priority, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(1, 1, 'Root', 'pending', 'high', new Date().toISOString());
-  db.prepare('INSERT INTO tasks (id, project_id, title, status, priority, dependency_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(2, 1, 'Dep1', 'pending', 'medium', 1, new Date().toISOString());
-  db.prepare('INSERT INTO tasks (id, project_id, title, status, priority, dependency_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(3, 1, 'Dep2', 'done', 'low', 2, new Date().toISOString());
+  db.prepare('INSERT INTO tasks (id, project_id, title, status, priority, dependency_ids, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(2, 1, 'Dep1', 'pending', 'medium', '[1]', new Date().toISOString());
+  db.prepare('INSERT INTO tasks (id, project_id, title, status, priority, dependency_ids, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(3, 1, 'Dep2', 'done', 'low', '[2]', new Date().toISOString());
   const app = createTestApp(db);
   const { status, body } = await request(app, 'GET', '/api/tasks/3/chain');
   closeDb(db);

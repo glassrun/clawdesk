@@ -65,21 +65,16 @@ function setTaskStatus(taskId, newStatus) {
 async function triggerHeartbeat(agent, heartbeatBatch) {
   const tasks = db.loadTasks();
 function isTaskSatisfied(task, tasks) {
-  if (!task.dependency_id && !task.dependency_ids) return true;
+  if (!task.dependency_ids) return true;
   const done = (t) => t.status === 'done';
-  if (task.dependency_id) {
-    const dep = tasks.find(d => d.id === task.dependency_id);
-    if (!dep || !done(dep)) return false;
-  }
-  if (task.dependency_ids) {
-    try {
-      const ids = JSON.parse(task.dependency_ids);
-      for (const id of ids) {
-        const dep = tasks.find(d => d.id === id);
-        if (!dep || !done(dep)) return false;
-      }
-    } catch { return false; }
-  }
+  try {
+    const p = JSON.parse(task.dependency_ids);
+    if (!Array.isArray(p)) return true;
+    for (const id of p) {
+      const dep = tasks.find(d => d.id === id);
+      if (!dep || !done(dep)) return false;
+    }
+  } catch { return false; }
   return true;
 }
 
@@ -178,7 +173,7 @@ async function runHeartbeatCycle() {
         const changedAt = t._status_changed_at || t.created_at;
         if (changedAt < tenMinAgo) {
           t.status = 'pending';
-          delete t._status_changed_at;
+          t._status_changed_at = new Date().toISOString();
           changed = true;
           stuckResetLog.push({ task_id: t.id, title: t.title, stuck_since: changedAt });
         }
@@ -204,7 +199,7 @@ async function runHeartbeatCycle() {
         if (changedAt < fifteenMinAgo && t.retry_count < 3) {
           t.status = 'pending';
           t.retry_count += 1;
-          delete t._status_changed_at;
+          t._status_changed_at = new Date().toISOString();
           retryChanged = true;
           retryLog.push({ task_id: t.id, title: t.title, attempt: t.retry_count, failed_since: changedAt });
         }

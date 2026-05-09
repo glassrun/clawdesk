@@ -230,7 +230,7 @@ async function executeTask(agent, task, overrideRetry) {
             description: `Welcome! You are the newly created agent: ${task.creates_agent}. Review the project context and pick up tasks as needed.`,
             status: 'pending',
             priority: 'medium',
-            dependency_id: task.id,
+            dependency_ids: JSON.stringify([task.id]),
             creates_agent: null,
             created_by_agent_id: agent.id,
             created_at: new Date().toISOString(),
@@ -339,7 +339,9 @@ async function executeTask(agent, task, overrideRetry) {
     const agentDir = path.join(require('os').homedir(), '.openclaw', 'agents', agent.openclaw_agent_id);
     const sessionsFile = path.join(agentDir, 'sessions', 'sessions.json');
     if (require('fs').existsSync(sessionsFile)) {
-      const sessionsData = JSON.parse(require('fs').readFileSync(sessionsFile, 'utf8'));
+      const sessionsData = require('fs').existsSync(sessionsFile)
+        ? (() => { try { return JSON.parse(require('fs').readFileSync(sessionsFile, 'utf8')); } catch { return {}; } })()
+        : {};
       let best = null;
       for (const [key, sess] of Object.entries(sessionsData)) {
         if (sess.lastInteractionAt && (!best || sess.lastInteractionAt > best.lastInteractionAt)) best = sess;

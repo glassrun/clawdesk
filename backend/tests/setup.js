@@ -78,7 +78,6 @@ function getDb() {
       description         TEXT    DEFAULT '',
       status              TEXT    DEFAULT 'pending',
       priority            TEXT    DEFAULT 'medium',
-      dependency_id       INTEGER,
       dependency_ids      TEXT,
       creates_agent       TEXT,
       created_by_agent_id INTEGER,

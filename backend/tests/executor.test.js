@@ -213,7 +213,7 @@ test('creates_agent — when task.creates_agent is set, onboarding task is creat
       description: `Welcome! You are the newly created agent: ${newAgentId}. Review the project context and pick up tasks as needed.`,
       status: 'pending',
       priority: 'medium',
-      dependency_id: task.id,
+      dependency_ids: JSON.stringify([task.id]),
       creates_agent: null,
       created_by_agent_id: agent.id,
       created_at: new Date().toISOString(),
@@ -224,7 +224,7 @@ test('creates_agent — when task.creates_agent is set, onboarding task is creat
     // Verify onboarding task has correct fields
     assertEqual(onboardingTask.title, 'Onboarding: worker-bot-1');
     assertEqual(onboardingTask.assigned_agent_id, newAgent.id);
-    assertEqual(onboardingTask.dependency_id, task.id);
+    assertEqual(JSON.parse(onboardingTask.dependency_ids)[0], task.id);
     assertEqual(onboardingTask.creates_agent, null);
     createdOnboarding = true;
   } catch (e) {

@@ -189,7 +189,7 @@ export default function TasksPage() {
     setFormPriority(task.priority || "medium");
     setFormAgent(task.assigned_agent_id ? String(task.assigned_agent_id) : "");
     setFormProject(task.project_id);
-    setFormDepIds(task.dependency_ids ? JSON.parse(task.dependency_ids) : (task.dependency_id ? [task.dependency_id] : []));
+    setFormDepIds(task.dependency_ids ? (() => { try { const p = JSON.parse(task.dependency_ids); return Array.isArray(p) ? p : []; } catch { return []; } })() : []);
     setFormScheduledAt(task.scheduled_at ? task.scheduled_at.slice(0, 16) : "");
     setFormRepeat(task.repeat === true);
     setFormRequiresApproval(!!task.requires_approval);
@@ -198,13 +198,13 @@ export default function TasksPage() {
 
   const handleSave = async () => {
     if (!editTask) return;
+    if (!formTitle.trim()) { alert('Title is required'); return; }
     await updateTask(editTask.id, {
       title: formTitle,
       description: formDesc,
       priority: formPriority,
       assigned_agent_id: formAgent ? +formAgent : undefined,
       project_id: formProject,
-      dependency_id: formDepIds[0] || undefined,
       dependency_ids: formDepIds.length > 0 ? JSON.stringify(formDepIds) : undefined,
       scheduled_at: formScheduledAt || undefined,
       repeat: formRepeat || undefined,
@@ -215,12 +215,13 @@ export default function TasksPage() {
   };
 
   const handleAddSave = async () => {
+    if (!formTitle.trim()) { alert('Title is required'); return; }
+    if (!formProject) { alert('Project is required'); return; }
     await createTask(formProject, {
       title: formTitle,
       description: formDesc,
       priority: formPriority,
       assigned_agent_id: formAgent ? +formAgent : undefined,
-      dependency_id: formDepIds[0] || undefined,
       dependency_ids: formDepIds.length > 0 ? JSON.stringify(formDepIds) : undefined,
       scheduled_at: formScheduledAt || undefined,
       repeat: formRepeat || undefined,
@@ -399,14 +400,19 @@ export default function TasksPage() {
                       {t.agent_name ? <span>{t.agent_name}</span> : <span className="text-soft">unassigned</span>}
                     </td>
                     <td className="p-3 text-xs">
-                      {t.dependency_id ? (
-                        <span
-                          className={`badge ${t.dep_title ? (tasks.find(x => x.id === t.dependency_id)?.status === 'done' ? 'status-done' : 'status-pending') : ''}`}
-                          title={`Task #${t.dependency_id}${t.dep_title ? ': ' + t.dep_title : ''}`}
-                        >
-                          #{t.dependency_id}
-                        </span>
-                      ) : <span className="text-soft">—</span>}
+                      {(() => {
+                        const ids = t.dependency_ids ? (() => { try { return JSON.parse(t.dependency_ids); } catch { return []; } })() : [];
+                        if (!ids.length) return <span className="text-soft">—</span>;
+                        return ids.map(id => {
+                          const dep = tasks.find(x => x.id === id);
+                          const done = dep ? dep.status === 'done' : false; // false = missing dep
+                          return (
+                            <span key={id} className={`badge ${done ? 'status-done' : dep ? 'status-pending' : 'status-failed'}`} title={`Task #${id}${dep ? (dep.title ? ': ' + dep.title : ' [deleted]') : ' [deleted]'}`}>
+                              #{id}
+                            </span>
+                          );
+                        });
+                      })()}
                     </td>
                     <td className="p-3 text-xs text-muted">{t.created_by_agent_slug || <span className="text-soft">—</span>}</td>
                     <td className="p-3 text-muted">{projMap[t.project_id] || `Project #${t.project_id}`}</td>

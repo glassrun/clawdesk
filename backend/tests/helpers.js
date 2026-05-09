@@ -4,7 +4,7 @@
 const Database = require('better-sqlite3');
 const fs = require('fs');
 
-const TEST_DB_PATH = '/tmp/clawdesk-test.db';
+const TEST_DB_PATH = `/tmp/clawdesk-test-${process.pid}.db`;
 
 function getDb() {
   // Clean slate every time
@@ -72,7 +72,13 @@ function getDb() {
 }
 
 function closeDb(db) {
-  if (db) { db.close(); }
+  if (db) {
+    db.close();
+    for (const suffix of ['', '-wal', '-shm']) {
+      const p = TEST_DB_PATH + suffix;
+      if (fs.existsSync(p)) { try { fs.unlinkSync(p); } catch {} }
+    }
+  }
 }
 
 function nextId(db, table) {

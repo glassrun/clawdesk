@@ -40,21 +40,16 @@ function pickLeastLoadedAgent(agentIds) {
 // ===================== Task Dependency Check =====================
 
 function isTaskSatisfied(task, allTasks) {
-  if (!task.dependency_id && !task.dependency_ids) return true;
+  if (!task.dependency_ids) return true;
   const done = (t) => t.status === 'done';
-  if (task.dependency_id) {
-    const dep = allTasks.find(d => d.id === task.dependency_id);
-    if (!dep || !done(dep)) return false;
-  }
-  if (task.dependency_ids) {
-    try {
-      const ids = JSON.parse(task.dependency_ids);
-      for (const id of ids) {
-        const dep = allTasks.find(d => d.id === id);
-        if (!dep || !done(dep)) return false;
-      }
-    } catch { return false; }
-  }
+  try {
+    const p = JSON.parse(task.dependency_ids);
+    if (!Array.isArray(p)) return true;
+    for (const id of p) {
+      const dep = allTasks.find(d => d.id === id);
+      if (!dep || !done(dep)) return false;
+    }
+  } catch { return false; }
   return true;
 }
 
@@ -83,7 +78,6 @@ function processTriggerRules(projectId, completedTaskId) {
       status: 'pending',
       priority: rule.then_create_task?.priority || 'medium',
       assigned_agent_id: null,
-      dependency_id: null,
       dependency_ids: null,
       creates_agent: null,
       created_by_agent_id: null,
