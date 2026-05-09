@@ -107,6 +107,15 @@ function getDb() {
       status      TEXT,
       created_at  TEXT    DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS approvals (
+      id           INTEGER PRIMARY KEY,
+      task_id      INTEGER,
+      status       TEXT    DEFAULT 'pending',
+      requested_at TEXT    DEFAULT (datetime('now')),
+      resolved_at  TEXT,
+      resolved_by  TEXT,
+      notes        TEXT
+    );
   `);
 
   return db;

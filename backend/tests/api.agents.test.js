@@ -1,20 +1,18 @@
 'use strict';
 /**
- * api.agents.test.js — standalone
- * Run: node tests/api.agents.test.js
+ * api.agents.test.js — agent CRUD + task-count logic
+ * Run via Jest: npx jest tests/api.agents.test.js
  */
 
-const http = require('http');
-const { getDb, closeDb, makeAgent } = require('./helpers');
+const { getDb, closeDb } = require('./helpers');
 
-// ── test Express app (inline, mirrors routes/agents.js logic) ──────────────────
+// ── test Express app (mirrors routes/agents.js logic) ─────────────────────────
 
 function createTestApp(db) {
   const express = require('express');
   const cors = require('cors');
 
-  // Require fresh instances so each test gets a clean module state
-  const agentsRouter = require('express').Router();
+  const agentsRouter = express.Router();
 
   agentsRouter.get('/', (req, res) => {
     let agents = db.prepare('SELECT * FROM agents').all();
@@ -81,14 +79,14 @@ function createTestApp(db) {
     res.json({ ok: true, soft_deleted: true });
   });
 
-  const app = require('express')();
+  const app = express();
   app.use(cors({ origin: true, credentials: true }));
-  app.use(require('express').json());
+  app.use(express.json());
   app.use('/api/agents', agentsRouter);
   return app;
 }
 
-// ── tiny HTTP client ──────────────────────────────────────────────────────────
+// ── HTTP helper ────────────────────────────────────────────────────────────────
 
 function request(app, method, path, body) {
   return new Promise((resolve, reject) => {
@@ -99,7 +97,7 @@ function request(app, method, path, body) {
         hostname: 'localhost', port, path, method,
         headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyStr) },
       };
-      const req = http.request(opts, (res) => {
+      const req = http.request(opts, res => {
         let data = '';
         res.on('data', d => data += d);
         res.on('end', () => {
@@ -108,257 +106,222 @@ function request(app, method, path, body) {
           catch { resolve({ status: res.statusCode, body: data }); }
         });
       });
-      req.on('error', (e) => { server.close(); reject(e); });
+      req.on('error', e => { server.close(); reject(e); });
       if (bodyStr) req.write(bodyStr);
       req.end();
     });
   });
 }
 
-// ── test helpers ────────────────────────────────────────────────────────────────
+const http = require('http');
 
-function assertEqual(a, b) {
-  if (a !== b) throw new Error(`Expected ${JSON.stringify(b)} but got ${JSON.stringify(a)}`);
-}
+afterEach(() => closeDb(getDb()));
 
-// ── tests ──────────────────────────────────────────────────────────────────────
+// ── GET /api/agents ───────────────────────────────────────────────────────────
 
-const tests = [];
+describe('GET /api/agents', () => {
+  test('empty array when no agents', async () => {
+    const db = getDb();
+    const app = createTestApp(db);
+    const { status, body } = await request(app, 'GET', '/api/agents');
+    expect(status).toBe(200);
+    expect(Array.isArray(body)).toBe(true);
+    expect(body.length).toBe(0);
+  });
 
-function test(name, fn) { tests.push({ name, fn }); }
+  test('returns all active agents', async () => {
+    const db = getDb();
+    db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(1, 'alice', 'Alice', 'active', new Date().toISOString());
+    db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(2, 'bob', 'Bob', 'active', new Date().toISOString());
+    const app = createTestApp(db);
+    const { status, body } = await request(app, 'GET', '/api/agents');
+    expect(status).toBe(200);
+    expect(body.length).toBe(2);
+    expect(body[0].openclaw_agent_id).toBe('alice');
+    expect(body[1].openclaw_agent_id).toBe('bob');
+  });
 
-// GET /api/agents
-test('GET /api/agents — empty array when no agents', async () => {
-  const db = getDb();
-  const app = createTestApp(db);
-  const { status, body } = await request(app, 'GET', '/api/agents');
-  closeDb(db);
-  assertEqual(status, 200);
-  assertEqual(Array.isArray(body), true);
-  assertEqual(body.length, 0);
+  test('filters by status query param', async () => {
+    const db = getDb();
+    db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(1, 'alice', 'Alice', 'active', new Date().toISOString());
+    db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(2, 'bob', 'Bob', 'paused', new Date().toISOString());
+    const app = createTestApp(db);
+    const { status, body } = await request(app, 'GET', '/api/agents?status=paused');
+    expect(status).toBe(200);
+    expect(body.length).toBe(1);
+    expect(body[0].openclaw_agent_id).toBe('bob');
+  });
+
+  test('filters by search (name)', async () => {
+    const db = getDb();
+    db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(1, 'alice', 'Alice Smith', 'active', new Date().toISOString());
+    db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(2, 'bob', 'Bob Jones', 'active', new Date().toISOString());
+    const app = createTestApp(db);
+    const { status, body } = await request(app, 'GET', '/api/agents?search=alice');
+    expect(status).toBe(200);
+    expect(body.length).toBe(1);
+    expect(body[0].name).toBe('Alice Smith');
+  });
+
+  test('filters by search (openclaw_agent_id)', async () => {
+    const db = getDb();
+    db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(1, 'alice-bot', 'Alice', 'active', new Date().toISOString());
+    const app = createTestApp(db);
+    const { status, body } = await request(app, 'GET', '/api/agents?search=alice-bot');
+    expect(status).toBe(200);
+    expect(body.length).toBe(1);
+    expect(body[0].openclaw_agent_id).toBe('alice-bot');
+  });
+
+  test('includes task counts', async () => {
+    const db = getDb();
+    db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(1, 'x', 'X', 'active', new Date().toISOString());
+    db.prepare('INSERT INTO tasks (id,project_id,assigned_agent_id,title,status,created_at) VALUES (?,?,?,?,?,?)').run(1, 1, 1, 'T1', 'pending', new Date().toISOString());
+    db.prepare('INSERT INTO tasks (id,project_id,assigned_agent_id,title,status,created_at) VALUES (?,?,?,?,?,?)').run(2, 1, 1, 'T2', 'in_progress', new Date().toISOString());
+    const app = createTestApp(db);
+    const { status, body } = await request(app, 'GET', '/api/agents');
+    expect(status).toBe(200);
+    expect(body[0].tasks_pending).toBe(1);
+    expect(body[0].tasks_in_progress).toBe(1);
+    expect(body[0].tasks_done).toBe(0);
+    expect(body[0].tasks_failed).toBe(0);
+  });
 });
 
-test('GET /api/agents — returns all agents', async () => {
-  const db = getDb();
-  db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(1, 'alice', 'Alice', 'active', new Date().toISOString());
-  db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(2, 'bob', 'Bob', 'active', new Date().toISOString());
-  const app = createTestApp(db);
-  const { status, body } = await request(app, 'GET', '/api/agents');
-  closeDb(db);
-  assertEqual(status, 200);
-  assertEqual(body.length, 2);
-  assertEqual(body[0].openclaw_agent_id, 'alice');
-  assertEqual(body[1].openclaw_agent_id, 'bob');
+// ── GET /api/agents/:id ───────────────────────────────────────────────────────
+
+describe('GET /api/agents/:id', () => {
+  test('200 when found', async () => {
+    const db = getDb();
+    db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(5, 'charlie', 'Charlie', 'active', new Date().toISOString());
+    const app = createTestApp(db);
+    const { status, body } = await request(app, 'GET', '/api/agents/5');
+    expect(status).toBe(200);
+    expect(body.openclaw_agent_id).toBe('charlie');
+  });
+
+  test('404 when not found', async () => {
+    const db = getDb();
+    const app = createTestApp(db);
+    const { status, body } = await request(app, 'GET', '/api/agents/99999');
+    expect(status).toBe(404);
+    expect(body.error).toBe('not found');
+  });
 });
 
-test('GET /api/agents — filters by status query param', async () => {
-  const db = getDb();
-  db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(1, 'alice', 'Alice', 'active', new Date().toISOString());
-  db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(2, 'bob', 'Bob', 'paused', new Date().toISOString());
-  const app = createTestApp(db);
-  const { status, body } = await request(app, 'GET', '/api/agents?status=paused');
-  closeDb(db);
-  assertEqual(status, 200);
-  assertEqual(body.length, 1);
-  assertEqual(body[0].openclaw_agent_id, 'bob');
+// ── PUT /api/agents/:id ───────────────────────────────────────────────────────
+
+describe('PUT /api/agents/:id', () => {
+  test('updates name', async () => {
+    const db = getDb();
+    db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(7, 'dave', 'Dave', 'active', new Date().toISOString());
+    const app = createTestApp(db);
+    const { status, body } = await request(app, 'PUT', '/api/agents/7', { name: 'David' });
+    expect(status).toBe(200);
+    expect(body.name).toBe('David');
+  });
+
+  test('updates status', async () => {
+    const db = getDb();
+    db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(7, 'dave', 'Dave', 'active', new Date().toISOString());
+    const app = createTestApp(db);
+    const { status, body } = await request(app, 'PUT', '/api/agents/7', { status: 'paused' });
+    expect(status).toBe(200);
+    expect(body.status).toBe('paused');
+  });
+
+  test('updates budget fields', async () => {
+    const db = getDb();
+    db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(7, 'dave', 'Dave', 'active', new Date().toISOString());
+    const app = createTestApp(db);
+    const { status, body } = await request(app, 'PUT', '/api/agents/7', { budget_limit: 500, budget_spent: 123 });
+    expect(status).toBe(200);
+    expect(body.budget_limit).toBe(500);
+    expect(body.budget_spent).toBe(123);
+  });
+
+  test('preserves fields not in request', async () => {
+    const db = getDb();
+    db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,budget_limit,heartbeat_interval,created_at) VALUES (?,?,?,?,?,?,?)')
+      .run(7, 'dave', 'Dave', 'active', 100, 60, new Date().toISOString());
+    const app = createTestApp(db);
+    const { status, body } = await request(app, 'PUT', '/api/agents/7', { name: 'David' });
+    expect(status).toBe(200);
+    expect(body.name).toBe('David');
+    expect(body.status).toBe('active');
+    expect(body.budget_limit).toBe(100);
+    expect(body.heartbeat_interval).toBe(60);
+  });
+
+  test('404 for non-existent agent', async () => {
+    const db = getDb();
+    const app = createTestApp(db);
+    const { status, body } = await request(app, 'PUT', '/api/agents/99999', { name: 'Ghost' });
+    expect(status).toBe(404);
+    expect(body.error).toBe('not found');
+  });
+
+  test('clamps heartbeat_interval to minimum 1', async () => {
+    const db = getDb();
+    db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(7, 'dave', 'Dave', 'active', new Date().toISOString());
+    const app = createTestApp(db);
+    const { status, body } = await request(app, 'PUT', '/api/agents/7', { heartbeat_interval: 0 });
+    expect(status).toBe(200);
+    expect(body.heartbeat_interval).toBe(1);
+  });
 });
 
-test('GET /api/agents — filters by search (name)', async () => {
-  const db = getDb();
-  db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(1, 'alice', 'Alice Smith', 'active', new Date().toISOString());
-  db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(2, 'bob', 'Bob Jones', 'active', new Date().toISOString());
-  const app = createTestApp(db);
-  const { status, body } = await request(app, 'GET', '/api/agents?search=alice');
-  closeDb(db);
-  assertEqual(status, 200);
-  assertEqual(body.length, 1);
-  assertEqual(body[0].name, 'Alice Smith');
+// ── DELETE /api/agents/:id ────────────────────────────────────────────────────
+
+describe('DELETE /api/agents/:id', () => {
+  test('404 for non-existent agent', async () => {
+    const db = getDb();
+    const app = createTestApp(db);
+    const { status, body } = await request(app, 'DELETE', '/api/agents/99999');
+    expect(status).toBe(404);
+    expect(body.error).toBe('not found');
+  });
+
+  test('hard-deletes agent with force=1', async () => {
+    const db = getDb();
+    db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(10, 'del', 'DeleteMe', 'active', new Date().toISOString());
+    const app = createTestApp(db);
+    const { status, body } = await request(app, 'DELETE', '/api/agents/10?force=1');
+    const agentStillExists = db.prepare('SELECT * FROM agents WHERE id = 10').get() !== undefined;
+    expect(status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(agentStillExists).toBe(false);
+  });
+
+  test('cascade-deletes tasks assigned to agent', async () => {
+    const db = getDb();
+    db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(10, 'del', 'DeleteMe', 'active', new Date().toISOString());
+    db.prepare('INSERT INTO tasks (id,project_id,assigned_agent_id,title,status,created_at) VALUES (?,?,?,?,?,?)').run(1, 1, 10, 'Task A', 'pending', new Date().toISOString());
+    db.prepare('INSERT INTO tasks (id,project_id,assigned_agent_id,title,status,created_at) VALUES (?,?,?,?,?,?)').run(2, 1, 10, 'Task B', 'done', new Date().toISOString());
+    const app = createTestApp(db);
+    const { status } = await request(app, 'DELETE', '/api/agents/10?force=1');
+    const remainingTasks = db.prepare('SELECT * FROM tasks WHERE assigned_agent_id = 10').all().length;
+    expect(status).toBe(200);
+    expect(remainingTasks).toBe(0);
+  });
+
+  test('400 when agent has active pending tasks (no force)', async () => {
+    const db = getDb();
+    db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(10, 'del', 'DeleteMe', 'active', new Date().toISOString());
+    db.prepare('INSERT INTO tasks (id,project_id,assigned_agent_id,title,status,created_at) VALUES (?,?,?,?,?,?)').run(3, 1, 10, 'Active Task', 'in_progress', new Date().toISOString());
+    const app = createTestApp(db);
+    const { status, body } = await request(app, 'DELETE', '/api/agents/10');
+    expect(status).toBe(400);
+    expect(body.error.includes('active pending tasks')).toBe(true);
+  });
+
+  test('allows delete with force=1 when agent has active tasks', async () => {
+    const db = getDb();
+    db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(10, 'del', 'DeleteMe', 'active', new Date().toISOString());
+    db.prepare('INSERT INTO tasks (id,project_id,assigned_agent_id,title,status,created_at) VALUES (?,?,?,?,?,?)').run(4, 1, 10, 'Active Task', 'in_progress', new Date().toISOString());
+    const app = createTestApp(db);
+    const { status, body } = await request(app, 'DELETE', '/api/agents/10?force=1');
+    expect(status).toBe(200);
+    expect(body.ok).toBe(true);
+  });
 });
-
-test('GET /api/agents — filters by search (openclaw_agent_id)', async () => {
-  const db = getDb();
-  db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(1, 'alice-bot', 'Alice', 'active', new Date().toISOString());
-  const app = createTestApp(db);
-  const { status, body } = await request(app, 'GET', '/api/agents?search=alice-bot');
-  closeDb(db);
-  assertEqual(status, 200);
-  assertEqual(body.length, 1);
-  assertEqual(body[0].openclaw_agent_id, 'alice-bot');
-});
-
-test('GET /api/agents — includes task counts', async () => {
-  const db = getDb();
-  db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(1, 'x', 'X', 'active', new Date().toISOString());
-  db.prepare('INSERT INTO tasks (id,project_id,assigned_agent_id,title,status,created_at) VALUES (?,?,?,?,?,?)').run(1, 1, 1, 'T1', 'pending', new Date().toISOString());
-  db.prepare('INSERT INTO tasks (id,project_id,assigned_agent_id,title,status,created_at) VALUES (?,?,?,?,?,?)').run(2, 1, 1, 'T2', 'in_progress', new Date().toISOString());
-  const app = createTestApp(db);
-  const { status, body } = await request(app, 'GET', '/api/agents');
-  closeDb(db);
-  assertEqual(status, 200);
-  assertEqual(body[0].tasks_pending, 1);
-  assertEqual(body[0].tasks_in_progress, 1);
-  assertEqual(body[0].tasks_done, 0);
-  assertEqual(body[0].tasks_failed, 0);
-});
-
-// GET /api/agents/:id
-test('GET /api/agents/:id — 200 when found', async () => {
-  const db = getDb();
-  db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(5, 'charlie', 'Charlie', 'active', new Date().toISOString());
-  const app = createTestApp(db);
-  const { status, body } = await request(app, 'GET', '/api/agents/5');
-  closeDb(db);
-  assertEqual(status, 200);
-  assertEqual(body.openclaw_agent_id, 'charlie');
-});
-
-test('GET /api/agents/:id — 404 when not found', async () => {
-  const db = getDb();
-  const app = createTestApp(db);
-  const { status, body } = await request(app, 'GET', '/api/agents/99999');
-  closeDb(db);
-  assertEqual(status, 404);
-  assertEqual(body.error, 'not found');
-});
-
-// PUT /api/agents/:id
-test('PUT /api/agents/:id — updates name', async () => {
-  const db = getDb();
-  db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(7, 'dave', 'Dave', 'active', new Date().toISOString());
-  const app = createTestApp(db);
-  const { status, body } = await request(app, 'PUT', '/api/agents/7', { name: 'David' });
-  closeDb(db);
-  assertEqual(status, 200);
-  assertEqual(body.name, 'David');
-});
-
-test('PUT /api/agents/:id — updates status', async () => {
-  const db = getDb();
-  db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(7, 'dave', 'Dave', 'active', new Date().toISOString());
-  const app = createTestApp(db);
-  const { status, body } = await request(app, 'PUT', '/api/agents/7', { status: 'paused' });
-  closeDb(db);
-  assertEqual(status, 200);
-  assertEqual(body.status, 'paused');
-});
-
-test('PUT /api/agents/:id — updates budget fields', async () => {
-  const db = getDb();
-  db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(7, 'dave', 'Dave', 'active', new Date().toISOString());
-  const app = createTestApp(db);
-  const { status, body } = await request(app, 'PUT', '/api/agents/7', { budget_limit: 500, budget_spent: 123 });
-  closeDb(db);
-  assertEqual(status, 200);
-  assertEqual(body.budget_limit, 500);
-  assertEqual(body.budget_spent, 123);
-});
-
-test('PUT /api/agents/:id — preserves fields not in request', async () => {
-  const db = getDb();
-  db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,budget_limit,heartbeat_interval,created_at) VALUES (?,?,?,?,?,?,?)')
-    .run(7, 'dave', 'Dave', 'active', 100, 60, new Date().toISOString());
-  const app = createTestApp(db);
-  const { status, body } = await request(app, 'PUT', '/api/agents/7', { name: 'David' });
-  closeDb(db);
-  assertEqual(status, 200);
-  assertEqual(body.name, 'David');
-  assertEqual(body.status, 'active');
-  assertEqual(body.budget_limit, 100);
-  assertEqual(body.heartbeat_interval, 60);
-});
-
-test('PUT /api/agents/:id — 404 for non-existent agent', async () => {
-  const db = getDb();
-  const app = createTestApp(db);
-  const { status, body } = await request(app, 'PUT', '/api/agents/99999', { name: 'Ghost' });
-  closeDb(db);
-  assertEqual(status, 404);
-  assertEqual(body.error, 'not found');
-});
-
-test('PUT /api/agents/:id — clamps heartbeat_interval to minimum 1', async () => {
-  const db = getDb();
-  db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(7, 'dave', 'Dave', 'active', new Date().toISOString());
-  const app = createTestApp(db);
-  const { status, body } = await request(app, 'PUT', '/api/agents/7', { heartbeat_interval: 0 });
-  closeDb(db);
-  assertEqual(status, 200);
-  assertEqual(body.heartbeat_interval, 1);
-});
-
-// DELETE /api/agents/:id
-test('DELETE /api/agents/:id — 404 for non-existent agent', async () => {
-  const db = getDb();
-  const app = createTestApp(db);
-  const { status, body } = await request(app, 'DELETE', '/api/agents/99999');
-  closeDb(db);
-  assertEqual(status, 404);
-  assertEqual(body.error, 'not found');
-});
-
-test('DELETE /api/agents/:id — hard-deletes agent with force=1', async () => {
-  const db = getDb();
-  db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(10, 'del', 'DeleteMe', 'active', new Date().toISOString());
-  const app = createTestApp(db);
-  const { status, body } = await request(app, 'DELETE', '/api/agents/10?force=1');
-  const agentStillExists = db.prepare('SELECT * FROM agents WHERE id = 10').get() !== undefined;
-  closeDb(db);
-  assertEqual(status, 200);
-  assertEqual(body.ok, true);
-  assertEqual(agentStillExists, false);
-});
-
-test('DELETE /api/agents/:id — cascade-deletes tasks assigned to agent', async () => {
-  const db = getDb();
-  db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(10, 'del', 'DeleteMe', 'active', new Date().toISOString());
-  db.prepare('INSERT INTO tasks (id,project_id,assigned_agent_id,title,status,created_at) VALUES (?,?,?,?,?,?)').run(1, 1, 10, 'Task A', 'pending', new Date().toISOString());
-  db.prepare('INSERT INTO tasks (id,project_id,assigned_agent_id,title,status,created_at) VALUES (?,?,?,?,?,?)').run(2, 1, 10, 'Task B', 'done', new Date().toISOString());
-  const app = createTestApp(db);
-  const { status } = await request(app, 'DELETE', '/api/agents/10?force=1');
-  const remainingTasks = db.prepare('SELECT * FROM tasks WHERE assigned_agent_id = 10').all().length;
-  closeDb(db);
-  assertEqual(status, 200);
-  assertEqual(remainingTasks, 0);
-});
-
-test('DELETE /api/agents/:id — 400 when agent has active pending tasks (no force)', async () => {
-  const db = getDb();
-  db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(10, 'del', 'DeleteMe', 'active', new Date().toISOString());
-  db.prepare('INSERT INTO tasks (id,project_id,assigned_agent_id,title,status,created_at) VALUES (?,?,?,?,?,?)').run(3, 1, 10, 'Active Task', 'in_progress', new Date().toISOString());
-  const app = createTestApp(db);
-  const { status, body } = await request(app, 'DELETE', '/api/agents/10');
-  closeDb(db);
-  assertEqual(status, 400);
-  assertEqual(body.error.includes('active pending tasks'), true);
-});
-
-test('DELETE /api/agents/:id — allows delete with force=1 when agent has active tasks', async () => {
-  const db = getDb();
-  db.prepare('INSERT INTO agents (id,openclaw_agent_id,name,status,created_at) VALUES (?,?,?,?,?)').run(10, 'del', 'DeleteMe', 'active', new Date().toISOString());
-  db.prepare('INSERT INTO tasks (id,project_id,assigned_agent_id,title,status,created_at) VALUES (?,?,?,?,?,?)').run(4, 1, 10, 'Active Task', 'in_progress', new Date().toISOString());
-  const app = createTestApp(db);
-  const { status, body } = await request(app, 'DELETE', '/api/agents/10?force=1');
-  closeDb(db);
-  assertEqual(status, 200);
-  assertEqual(body.ok, true);
-});
-
-// ── runner ──────────────────────────────────────────────────────────────────────
-
-async function run() {
-  let passed = 0, failed = 0;
-  for (const { name, fn } of tests) {
-    try {
-      await fn();
-      console.log(`  ✓ ${name}`);
-      passed++;
-    } catch (e) {
-      console.log(`  ✗ ${name}: ${e.message}`);
-      failed++;
-    }
-  }
-  console.log(`\nResults: ${passed} passed, ${failed} failed`);
-  process.exit(failed > 0 ? 1 : 0);
-}
-
-run();
