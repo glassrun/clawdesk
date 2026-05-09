@@ -401,11 +401,15 @@ export default function TasksPage() {
                     </td>
                     <td className="p-3 text-xs">
                       {(() => {
-                        const ids = t.dependency_ids ? (() => { try { return JSON.parse(t.dependency_ids); } catch { return []; } })() : [];
+                        const raw = t.dependency_ids;
+                        let ids: number[] = [];
+                        if (raw) {
+                          try { const p = JSON.parse(raw); ids = Array.isArray(p) ? p.filter((x: any) => typeof x === 'number') : []; } catch { ids = []; }
+                        }
                         if (!ids.length) return <span className="text-soft">—</span>;
                         return ids.map((id: number) => {
                           const dep = tasks.find(x => x.id === id);
-                          const done = dep ? dep.status === 'done' : false; // false = missing dep
+                          const done = dep ? dep.status === 'done' : false;
                           return (
                             <span key={id} className={`badge ${done ? 'status-done' : dep ? 'status-pending' : 'status-failed'}`} title={`Task #${id}${dep ? (dep.title ? ': ' + dep.title : ' [deleted]') : ' [deleted]'}`}>
                               #{id}

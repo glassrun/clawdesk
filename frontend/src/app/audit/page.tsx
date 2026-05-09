@@ -81,7 +81,8 @@ export default function AuditPage() {
     }
     if (search) {
       const q = search.toLowerCase();
-      if (!h.action_taken.toLowerCase().includes(q) &&
+      const raw = h.action_taken || '';
+      if (!raw.toLowerCase().includes(q) &&
           !(h.agent_name || "").toLowerCase().includes(q) &&
           !(h.openclaw_agent_id || "").toLowerCase().includes(q)) return false;
     }

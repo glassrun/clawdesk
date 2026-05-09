@@ -57,19 +57,19 @@ export function TaskPanel({ task, isRunning, onClose, onRun, onDone }: TaskPanel
       const elapsed = Date.now() - start;
       setDurationMs(elapsed);
 
-      const latest = results.find((r: any) => r.task_id === task.id) as any;
-      if (latest) {
+      const latest = results.length > 0 ? results[results.length - 1] : null;
+      if (latest && latest.output) {
         setOutput(latest.output || "(no output)");
         if (latest.input_tokens != null) {
           setUsage({
-            input: latest.input_tokens,
-            output: latest.output_tokens,
-            cache: latest.cache_read_tokens,
-            cost: latest.cost,
+            input: latest.input_tokens ?? 0,
+            output: latest.output_tokens ?? 0,
+            cache: latest.cache_read_tokens ?? 0,
+            cost: latest.cost ?? 0,
           });
         }
         setStatus("done");
-      onDone(task.id);
+        onDone(task.id);
       } else {
         setOutput(results[0]?.output || "(no result recorded)");
         setStatus(results[0]?.status === "failed" ? "failed" : "done");

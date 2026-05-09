@@ -54,25 +54,25 @@ export default function AgentsPage() {
   const [formHbInterval, setFormHbInterval] = useState(30);
   const [formBudgetLimit, setFormBudgetLimit] = useState(0);
 
-  const loadData = async () => {
+  const { lastMessage } = useStream();
+
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const res = await getAgents();
       setAgents(res);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
-  };
+  }, []);
 
-  const { lastMessage } = useStream();
-
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [loadData]);
 
   useEffect(() => {
     if (!lastMessage) return;
     if (lastMessage.event === "tasks" || lastMessage.event === "agents") {
       loadData();
     }
-  }, [lastMessage]);
+  }, [lastMessage, loadData]);
 
   const handleSync = async () => {
     setSyncing(true);

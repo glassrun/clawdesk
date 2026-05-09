@@ -431,26 +431,34 @@ export default function DashboardPage() {
           {recentHeartbeats.length === 0 && (
             <div className="empty-state">No recent activity</div>
           )}
-          {recentHeartbeats.map((hb: any) => {
+          {recentHeartbeats.map((hb: any, idx: number) => {
             let icon = '💓';
             let iconClass = 'heartbeat';
-            let title = hb.agent_name ?? hb.openclaw_agent_id ?? '—';
+            let title = hb.agent_name ?? '—';
             let meta = '';
+            const raw = (hb.action_taken || hb.action_summary || '') as string;
             try {
-              const action = typeof hb.action_taken === 'string' ? JSON.parse(hb.action_taken) : hb.action_taken;
+              // action_summary is already a string like "executed" or "error"
+              // action_taken may be a JSON string with object shape { action, task_title, ... }
+              let action: any;
+              if (raw.startsWith('{')) {
+                action = JSON.parse(raw);
+              } else {
+                action = { action: raw };
+              }
               if (action?.action === 'executed') { icon = '⚡'; iconClass = 'heartbeat'; title = `${hb.agent_name ?? '—'} executed task`; meta = action.task_title ? `→ ${action.task_title}` : ''; }
               else if (action?.action === 'error') { icon = '❌'; iconClass = 'failed'; title = `${hb.agent_name ?? '—'} error`; meta = action.error ? `${action.error}`.substring(0, 60) : ''; }
               else if (action?.action === 'stuck_reset') { icon = '🔄'; iconClass = 'pending'; title = `${hb.agent_name ?? '—'} stuck task reset`; meta = action.title ? `${action.title}` : ''; }
               else if (action?.action === 'auto_retry') { icon = '↺'; iconClass = 'pending'; title = `${hb.agent_name ?? '—'} auto-retry`; meta = `${action.title ?? ''} (${action.attempt ?? ''}/3)`; }
               else if (action?.action === 'handoff') { icon = '🔀'; iconClass = 'agent'; title = `${hb.agent_name ?? '—'} handoff`; meta = `→ ${action.to}: ${action.title ?? ''}`; }
-              else if (action?.raw) { icon = '📋'; iconClass = 'heartbeat'; title = hb.agent_name ?? '—'; meta = action.raw.substring(0, 80); }
-              else { icon = '💓'; iconClass = 'heartbeat'; title = hb.agent_name ?? '—'; meta = typeof hb.action_taken === 'string' ? hb.action_taken.substring(0, 80) : ''; }
+              else if (action?.raw) { icon = '📋'; iconClass = 'heartbeat'; title = hb.agent_name ?? '—'; meta = (action.raw as string).substring(0, 80); }
+              else { icon = '💓'; iconClass = 'heartbeat'; title = hb.agent_name ?? '—'; meta = typeof raw === 'string' ? raw.substring(0, 80) : ''; }
             } catch {
-              title = hb.agent_name ?? hb.openclaw_agent_id ?? '—';
-              meta = typeof hb.action_taken === 'string' ? hb.action_taken.substring(0, 80) : '';
+              title = hb.agent_name ?? '—';
+              meta = typeof raw === 'string' ? raw.substring(0, 80) : '';
             }
             return (
-              <div key={hb.id} className="activity-item">
+              <div key={`hb-${hb.id ?? idx}`} className="activity-item">
                 <div className={`activity-icon ${iconClass}`}>{icon}</div>
                 <div className="activity-body">
                   <div className="activity-title">{title}</div>

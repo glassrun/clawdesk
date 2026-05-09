@@ -43,10 +43,13 @@ export function CommandPalette() {
     finally { setLoading(false); }
   }, []);
 
+  const doSearchRef = useRef<{(q: string): Promise<void>} | null>(null);
+  doSearchRef.current = doSearch;
+
   useEffect(() => {
-    const timer = setTimeout(() => doSearch(query), 200);
+    const timer = setTimeout(() => doSearchRef.current!(query), 200);
     return () => clearTimeout(timer);
-  }, [query, doSearch]);
+  }, [query]);
 
   // Keyboard shortcut
   useEffect(() => {

@@ -88,6 +88,8 @@ export interface Dashboard {
   agents: Agent[];
   projects: Project[];
   recent_heartbeats?: Heartbeat[];
+  /** Dashboard-only: raw action_taken strings (dashboard normalizes action_summary) */
+  recent_heartbeats_raw?: string[];
 }
 
 export interface SystemStats {
