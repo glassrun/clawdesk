@@ -120,9 +120,9 @@ export default function TasksPage() {
     } catch (e) { console.error(e); }
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { loadData(); }, []);
 
-  useEffect(() => { loadApprovals(); }, [loadApprovals]);
+  useEffect(() => { loadApprovals(); }, []);
 
   useEffect(() => {
     if (!lastMessage) return;

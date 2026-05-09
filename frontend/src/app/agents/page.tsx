@@ -65,7 +65,7 @@ export default function AgentsPage() {
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { loadData(); }, []);
 
   useEffect(() => {
     if (!lastMessage) return;
