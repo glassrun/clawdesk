@@ -79,17 +79,6 @@ export interface Heartbeat {
   triggered_at: string;
 }
 
-export interface Task {
-  total_agents: number;
-  active_tasks: number;
-  completed_tasks: number;
-  failed_tasks: number;
-  total_spent: number;
-  agents: Agent[];
-  projects: Project[];
-  recent_heartbeats?: Heartbeat[];
-}
-
 export interface Dashboard {
   total_agents: number;
   active_tasks: number;

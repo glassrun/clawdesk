@@ -403,7 +403,7 @@ export default function TasksPage() {
                       {(() => {
                         const ids = t.dependency_ids ? (() => { try { return JSON.parse(t.dependency_ids); } catch { return []; } })() : [];
                         if (!ids.length) return <span className="text-soft">—</span>;
-                        return ids.map(id => {
+                        return ids.map((id: number) => {
                           const dep = tasks.find(x => x.id === id);
                           const done = dep ? dep.status === 'done' : false; // false = missing dep
                           return (
