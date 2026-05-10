@@ -3,12 +3,10 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
 export async function api<T>(path: string, opts: RequestInit = {}): Promise<T> {
-  console.log('API call:', path);
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { 'Content-Type': 'application/json', ...opts.headers },
     ...opts,
   });
-  console.log('API response:', res.status, path);
   const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
   if (!res.ok) throw data;
   return data as T;
