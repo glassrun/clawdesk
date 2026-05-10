@@ -138,7 +138,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
       id: newId,
       title: source.title + ' (clone)',
       status: 'active',
-      is_template: 0,
+      is_template: source.is_template,
       template_source_id: source.id,
       created_at: now,
       workspace_path: ws,

@@ -309,7 +309,8 @@ test('executor module exports expected functions', () => {
   cleanEnv();
   // Read the executor file without executing to check exports
   const fs = require('fs');
-  const content = fs.readFileSync('./services/executor.js', 'utf8');
+  const path = require('path');
+  const content = fs.readFileSync(path.join(__dirname, '..', 'services', 'executor.js'), 'utf8');
   assertTrue(content.includes('runOpenClawAgent'));
   assertTrue(content.includes('createOpenClawAgent'));
   assertTrue(content.includes('deleteOpenClawAgent'));
@@ -323,7 +324,8 @@ test('executor module exports expected functions', () => {
 test('setSSEContext — returns an object with expected methods', () => {
   // We test the module interface without actually loading it with all deps
   const fs = require('fs');
-  const content = fs.readFileSync('./services/executor.js', 'utf8');
+  const path = require('path');
+  const content = fs.readFileSync(path.join(__dirname, '..', 'services', 'executor.js'), 'utf8');
   // Module must export setSSEContext, broadcastTaskStream, broadcastTaskDone
   assertTrue(content.includes('setSSEContext'));
   assertTrue(content.includes('broadcastTaskStream'));

@@ -4,7 +4,7 @@ function normalizeTask(t, agents) {
   return { ...t, priority: t.priority || 'medium', agent_name: a?.name, openclaw_agent_id: a?.openclaw_agent_id, created_by_agent_slug: creator?.name || creator?.openclaw_agent_id || null };
 }
 
-module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
+module.exports = function(router, { db, broadcastSSE, broadcastTaskUpdate, setTaskStatus, nextId }) {
 
   // Task summary - lightweight aggregate counts
   router.get('/summary', (req, res) => {

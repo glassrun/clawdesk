@@ -38,7 +38,7 @@ function createTestApp(db) {
       tasks_done: taskCounts[a.id]?.done || 0,
       tasks_failed: taskCounts[a.id]?.failed || 0,
     }));
-    res.json(result);
+    res.json({ agents: result });
   });
 
   agentsRouter.get('/:id', (req, res) => {
@@ -74,7 +74,7 @@ function createTestApp(db) {
     if (agentTasks.length > 0 && req.query.force !== '1') {
       return res.status(400).json({ error: 'agent has active pending tasks', pending_tasks: agentTasks.length, hint: 'add ?force=1 to delete anyway' });
     }
-    db.prepare('DELETE FROM tasks WHERE assigned_agent_id = ?').run(agent.id);
+    db.prepare('DELETE FROM tasks WHERE assigned_agent_id = ? AND deleted_at IS NULL').run(agent.id);
     db.prepare('DELETE FROM agents WHERE id = ?').run(agent.id);
     res.json({ ok: true, soft_deleted: true });
   });
@@ -125,8 +125,8 @@ describe('GET /api/agents', () => {
     const app = createTestApp(db);
     const { status, body } = await request(app, 'GET', '/api/agents');
     expect(status).toBe(200);
-    expect(Array.isArray(body)).toBe(true);
-    expect(body.length).toBe(0);
+    expect(Array.isArray(body.agents)).toBe(true);
+    expect(body.agents.length).toBe(0);
   });
 
   test('returns all active agents', async () => {
@@ -136,9 +136,9 @@ describe('GET /api/agents', () => {
     const app = createTestApp(db);
     const { status, body } = await request(app, 'GET', '/api/agents');
     expect(status).toBe(200);
-    expect(body.length).toBe(2);
-    expect(body[0].openclaw_agent_id).toBe('alice');
-    expect(body[1].openclaw_agent_id).toBe('bob');
+    expect(body.agents.length).toBe(2);
+    expect(body.agents[0].openclaw_agent_id).toBe('alice');
+    expect(body.agents[1].openclaw_agent_id).toBe('bob');
   });
 
   test('filters by status query param', async () => {
@@ -148,8 +148,8 @@ describe('GET /api/agents', () => {
     const app = createTestApp(db);
     const { status, body } = await request(app, 'GET', '/api/agents?status=paused');
     expect(status).toBe(200);
-    expect(body.length).toBe(1);
-    expect(body[0].openclaw_agent_id).toBe('bob');
+    expect(body.agents.length).toBe(1);
+    expect(body.agents[0].openclaw_agent_id).toBe('bob');
   });
 
   test('filters by search (name)', async () => {
@@ -159,8 +159,8 @@ describe('GET /api/agents', () => {
     const app = createTestApp(db);
     const { status, body } = await request(app, 'GET', '/api/agents?search=alice');
     expect(status).toBe(200);
-    expect(body.length).toBe(1);
-    expect(body[0].name).toBe('Alice Smith');
+    expect(body.agents.length).toBe(1);
+    expect(body.agents[0].name).toBe('Alice Smith');
   });
 
   test('filters by search (openclaw_agent_id)', async () => {
@@ -169,8 +169,8 @@ describe('GET /api/agents', () => {
     const app = createTestApp(db);
     const { status, body } = await request(app, 'GET', '/api/agents?search=alice-bot');
     expect(status).toBe(200);
-    expect(body.length).toBe(1);
-    expect(body[0].openclaw_agent_id).toBe('alice-bot');
+    expect(body.agents.length).toBe(1);
+    expect(body.agents[0].openclaw_agent_id).toBe('alice-bot');
   });
 
   test('includes task counts', async () => {
@@ -181,10 +181,10 @@ describe('GET /api/agents', () => {
     const app = createTestApp(db);
     const { status, body } = await request(app, 'GET', '/api/agents');
     expect(status).toBe(200);
-    expect(body[0].tasks_pending).toBe(1);
-    expect(body[0].tasks_in_progress).toBe(1);
-    expect(body[0].tasks_done).toBe(0);
-    expect(body[0].tasks_failed).toBe(0);
+    expect(body.agents[0].tasks_pending).toBe(1);
+    expect(body.agents[0].tasks_in_progress).toBe(1);
+    expect(body.agents[0].tasks_done).toBe(0);
+    expect(body.agents[0].tasks_failed).toBe(0);
   });
 });
 

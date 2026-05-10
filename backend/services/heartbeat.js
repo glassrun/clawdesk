@@ -39,7 +39,7 @@ function setTaskStatus(taskId, newStatus) {
     const p = projects.find(x => x.id === t.project_id);
     if (p && p.status === 'completed') { p.status = 'active'; db.saveProjects(projects); console.log(`[Auto] Project "${p.title}" reopened - task un-completed`); }
   }
-  if (newStatus === 'done' && t.repeat === true) {
+  if (newStatus === 'done' && t.repeat) {
     const tasks = db.loadTasks();
     const newTask = {
       ...t,
@@ -254,7 +254,7 @@ async function runHeartbeatCycle() {
     if (heartbeatStats.last10Ms.length > 10) heartbeatStats.last10Ms.shift();
     heartbeatStats.agentsProcessed += results.length;
     heartbeatStats.errors += results.filter(r => r.action === 'error').length;
-    if (results.length > 0 && _broadcastSSE) _broadcastSSE('heartbeat', { results, ts: Date.now() });
+    // Note: SSE broadcast already done above before finally block
     if (heartbeatStats.cycles % 50 === 0 && heartbeatStats.cycles > 0) {
       const taskIds = new Set(db.loadTasks().map(t => t.id));
       const before = db.loadTaskResults().length;

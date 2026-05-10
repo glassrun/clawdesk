@@ -99,7 +99,7 @@ function createOpenClawAgent(agentId, name, workspace, opts = {}) {
     const vibe = opts.vibe || 'helpful and focused';
     fs.writeFileSync(path.join(wsDir, 'IDENTITY.md'), `# IDENTITY.md\n\n- **Name:** ${name}\n- **Role:** ${vibe}\n- **Creature:** AI agent\n- **Vibe:** ${vibe.split('.').filter(s=>s.trim())[0].split(',').slice(0,2).map(s=>s.trim()).join(', ') || 'focused and effective'}\n- **Emoji:** ${emoji}\n`);
     fs.writeFileSync(path.join(wsDir, 'SOUL.md'), `# SOUL.md\n\nYou are ${name}. ${vibe}. Be resourceful, direct, and actually do the work - don't just say you did.\n`);
-    fs.writeFileSync(path.join(wsDir, 'CAPABILITY.md'), `# CAPABILITY.md — ${name}\n\n- **Specialties:** ${vibe || 'general purpose'}\n- **Agent ID:** ${agentId}\n- **Created:** ${new Date().toISOString()}\n`);
+    fs.writeFileSync(path.join(wsDir, 'CAPABILITIES.md'), `# CAPABILITIES.md — ${name}\n\n- **Specialties:** ${vibe || 'general purpose'}\n- **Agent ID:** ${agentId}\n- **Created:** ${new Date().toISOString()}\n`);
     const idCmd = `${OPENCLAW_CLI} agents set-identity --agent "${agentId}" --name "${name.replace(/"/g, '\\"')}" --json`;
     const idResult = spawnSync(idCmd, { shell: true });
     if (idResult.status !== 0) console.log(`[createOpenClawAgent] set-identity: ${idResult.stderr.toString().substring(0, 200)}`);
@@ -140,9 +140,11 @@ async function executeTask(agent, task, overrideRetry) {
   // ── Approval gate ───────────────────────────────────────────────────
   if (task.requires_approval) {
     const { checkAndCreateApproval } = require('./scheduler');
-    checkAndCreateApproval(task);
-    console.log(`[Executor] Task #${task.id} requires approval, task paused`);
-    return { action: 'awaiting_approval', task_id: task.id, task_title: task.title };
+    const approvalId = checkAndCreateApproval(task);
+    if (approvalId) {
+      console.log(`[Executor] Task #${task.id} requires approval (#${approvalId}), task paused`);
+      return { action: 'awaiting_approval', task_id: task.id, task_title: task.title };
+    }
   }
 
   const projects = db.loadProjects();
@@ -169,7 +171,7 @@ async function executeTask(agent, task, overrideRetry) {
     message += `\nCRITICAL: Write ALL files to the PROJECT workspace, not your own workspace.`;
     message += `\nProject workspace: ${project.workspace_path}`;
     message += `\nUse the write tool with FULL paths: ${project.workspace_path}/[filename]`;
-    message += `\nUse the read tool to open and fully read ALL files in the ${project.workspace_path} folder. Then summarize the key information from them before starting your work.".`;
+    message += `\nUse the read tool to open and fully read ALL files in the ${project.workspace_path} folder. Then summarize the key information from them before starting your work.`;
   }
   message += `\nWhen finished, list every file you created with its path.`;
   message += `\n`;
@@ -298,9 +300,7 @@ async function executeTask(agent, task, overrideRetry) {
 
   if (executionError) {
     const durationMs = Date.now() - startTime;
-    const { setTaskStatus } = require('./heartbeat');
     setTaskStatus(task.id, 'failed');
-    module.exports.broadcastTaskDone(task.id, 'failed');
     if (project && project.workspace_path) {
       const sessionSummary = `Failed task "${task.title}". Agent: ${agent.openclaw_agent_id}. Error: ${executionError.message}.`;
       projectBrain.appendSessionMemory(project, sessionSummary);
@@ -363,9 +363,7 @@ async function executeTask(agent, task, overrideRetry) {
     console.log(`[executor] usage tracking: ${e.message}`);
   }
 
-  const { setTaskStatus } = require('./heartbeat');
   setTaskStatus(task.id, 'done');
-  module.exports.broadcastTaskDone(task.id, 'done');
   if (project && project.workspace_path) {
     const sessionSummary = `Completed task "${task.title}". Agent: ${agent.openclaw_agent_id}. Duration: ${durationMs}ms. Tokens: ${usage.totalTokens}. Cost: $${usage.estimatedCostUsd}.`;
     projectBrain.appendSessionMemory(project, sessionSummary);

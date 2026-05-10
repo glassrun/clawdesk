@@ -21,7 +21,7 @@ export interface Agent {
   status: string;
   budget_limit: number;
   budget_spent: number;
-  heartbeat_enabled: boolean;
+  heartbeat_enabled: number; // SQLite INTEGER 0/1
   heartbeat_interval: number;
   last_heartbeat?: string;
   tasks_pending?: number;
@@ -41,7 +41,7 @@ export interface Project {
   task_done?: number;
   completion_pct?: number;
   created_at?: string;
-  is_template?: number | boolean;
+  is_template?: number; // SQLite INTEGER 0/1
   template_source_id?: number | null;
 }
 
@@ -61,8 +61,8 @@ export interface Task {
   creates_agent?: string;
   created_by_agent_slug?: string;
   scheduled_at?: string;
-  requires_approval?: boolean;
-  repeat?: boolean;
+  requires_approval?: number; // SQLite INTEGER 0/1
+  repeat?: number; // SQLite INTEGER 0/1
   created_at: string;
   completed_at?: string;
   run_count?: number;
@@ -124,8 +124,8 @@ export async function getProjects() {
 }
 
 export async function getProject(id: number) {
-  // Backend returns { project: { ...project, tasks: [...] } }
-  return api<{ project: Project & { tasks: Task[] } }>(`/api/projects/${id}`);
+  // Backend returns flat object: { ...project, tasks: [...] } — NOT { project: {...} }
+  return api<Project & { tasks: Task[] }>(`/api/projects/${id}`);
 }
 
 export async function getTasks(params: Record<string, string> = {}) {
@@ -193,7 +193,8 @@ export async function runTask(id: number) {
 }
 
 export async function getTaskResults(id: number) {
-  return api<{ results: { task_id: number; input: string; output: string; executed_at: string; status?: string; input_tokens?: number; output_tokens?: number; cache_read_tokens?: number; cost?: number }[] }>(`/api/tasks/${id}/results`);
+  // Backend returns raw array directly — no { results: [...] } wrapper
+  return api<{ task_id: number; input: string; output: string; executed_at: string; status?: string; input_tokens?: number; output_tokens?: number; cache_read_tokens?: number; cost?: number }[]>(`/api/tasks/${id}/results`);
 }
 
 export async function tickHeartbeats() {
@@ -264,7 +265,8 @@ export async function duplicateTask(id: number) {
 }
 
 export async function addTaskNotes(id: number, notes: string) {
-  return api<any>(`/api/tasks/${id}/notes`, { method: 'POST', body: JSON.stringify({ notes }) });
+  // Backend expects { note } not { notes }
+  return api<any>(`/api/tasks/${id}/notes`, { method: 'POST', body: JSON.stringify({ note: notes }) });
 }
 
 export async function assignTask(id: number, agentId: number) {

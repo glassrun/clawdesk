@@ -376,7 +376,7 @@ function saveTasks(data) {
   db.exec("DELETE FROM tasks");
   const ins = db.prepare(`INSERT INTO tasks (id,project_id,assigned_agent_id,title,description,status,priority,dependency_ids,creates_agent,created_by_agent_id,created_at,completed_at,run_count,_retry_count,_status_changed_at,deleted_at,updated_at,repeat,scheduled_at,requires_approval)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
-  for (const t of data) ins.run(t.id,t.project_id,t.assigned_agent_id||null,t.title,t.description,t.status,t.priority,Array.isArray(t.dependency_ids)?JSON.stringify(t.dependency_ids):(t.dependency_ids||null),t.creates_agent||null,t.created_by_agent_id||null,t.created_at,t.completed_at||null,t.run_count||0,t._retry_count||0,t._status_changed_at||null,t.deleted_at||null,t.updated_at||null,t.repeat||0,t.scheduled_at||null,t.requires_approval?1:0);
+  for (const t of data) ins.run(t.id,t.project_id,t.assigned_agent_id||null,t.title,t.description,t.status,t.priority,Array.isArray(t.dependency_ids)?JSON.stringify(t.dependency_ids):(t.dependency_ids||null),t.creates_agent||null,t.created_by_agent_id||null,t.created_at,t.completed_at||null,t.run_count||0,t._retry_count||0,t._status_changed_at||null,t.deleted_at||null,t.updated_at||null,t.repeat?1:0,t.scheduled_at||null,t.requires_approval?1:0);
 }
 function insertTask(t) {
   const id = nextId('tasks');
@@ -384,12 +384,12 @@ function insertTask(t) {
   const depIds = t.dependency_ids
     ? (Array.isArray(t.dependency_ids) ? JSON.stringify(t.dependency_ids) : t.dependency_ids)
     : null;
-  db.prepare(`INSERT INTO tasks (id,project_id,assigned_agent_id,title,description,status,priority,dependency_ids,creates_agent,created_by_agent_id,created_at,scheduled_at,requires_approval)
+  db.prepare(`INSERT INTO tasks (id,project_id,assigned_agent_id,title,description,status,priority,dependency_ids,creates_agent,created_by_agent_id,created_at,scheduled_at,requires_approval,repeat)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(id, t.project_id, t.assigned_agent_id||null, t.title, t.description||'',
          t.status||'pending', t.priority||'medium', depIds,
          t.creates_agent||null, t.created_by_agent_id||null, now,
-         t.scheduled_at||null, t.requires_approval?1:0);
+         t.scheduled_at||null, t.requires_approval?1:0, t.repeat?1:0);
   return id;
 }
 function insertTaskBatch(batch) {
@@ -401,12 +401,12 @@ function insertTaskBatch(batch) {
     const depIds = t.dependency_ids
       ? (Array.isArray(t.dependency_ids) ? JSON.stringify(t.dependency_ids) : t.dependency_ids)
       : null;
-    db.prepare(`INSERT INTO tasks (id,project_id,assigned_agent_id,title,description,status,priority,dependency_ids,creates_agent,created_by_agent_id,created_at,scheduled_at,requires_approval)
+    db.prepare(`INSERT INTO tasks (id,project_id,assigned_agent_id,title,description,status,priority,dependency_ids,creates_agent,created_by_agent_id,created_at,scheduled_at,requires_approval,repeat)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(id, t.project_id, t.assigned_agent_id||null, t.title, t.description||'',
          t.status||'pending', t.priority||'medium', depIds,
          t.creates_agent||null, t.created_by_agent_id||null, now,
-         t.scheduled_at||null, t.requires_approval?1:0);
+         t.scheduled_at||null, t.requires_approval?1:0, t.repeat?1:0);
     results.push(id);
   }
   return results;

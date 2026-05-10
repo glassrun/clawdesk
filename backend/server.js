@@ -166,7 +166,7 @@ function setTaskStatus(taskId, newStatus) {
     const p = projects.find(x => x.id === t.project_id);
     if (p && p.status === 'completed') { p.status = 'active'; db.saveProjects(projects); console.log(`[Auto] Project "${p.title}" reopened - task un-completed`); }
   }
-  if (newStatus === 'done' && t.repeat === true) {
+  if (newStatus === 'done' && t.repeat) {
     const tasks = db.loadTasks();
     const newTask = {
       ...t, id: nextId('tasks'), status: 'pending',
