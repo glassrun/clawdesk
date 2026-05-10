@@ -89,7 +89,7 @@ function isTaskSatisfied(task, tasks) {
     if (a) a.last_heartbeat = new Date().toISOString();
     db.saveAgents(agents);
     const entry = { agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: { action: 'no_pending_tasks' }, status: 'idle' };
-    if (heartbeatBatch) { heartbeatBatch.push(entry); } else { const hbs = db.loadHeartbeats(); hbs.push({ id: nextId('heartbeats'), ...entry, action_taken: JSON.stringify(entry.action_taken) }); db.saveHeartbeats(hbs); }
+    if (heartbeatBatch) { heartbeatBatch.push(entry); } else { db.insertHeartbeat({ agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: JSON.stringify(entry.action_taken), status: 'idle' }); }
     return { agent: agent.name, action: 'idle' };
   }
   const task = pending[0];
@@ -101,8 +101,8 @@ function isTaskSatisfied(task, tasks) {
     const a = agents.find(x => x.id === agent.id);
     if (a) a.last_heartbeat = new Date().toISOString();
     db.saveAgents(agents);
-    const entry = { agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: result, status: result.action === 'failed' ? 'error' : 'ok' };
-    if (heartbeatBatch) { heartbeatBatch.push(entry); } else { const hbs = db.loadHeartbeats(); hbs.push({ id: nextId('heartbeats'), ...entry, action_taken: JSON.stringify(entry.action_taken) }); db.saveHeartbeats(hbs); }
+    const entry = { agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: result, status: (result.action === 'completed') ? 'ok' : result.action === 'error' || result.action === 'failed' ? 'error' : 'idle' };
+    if (heartbeatBatch) { heartbeatBatch.push(entry); } else { db.insertHeartbeat({ agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: JSON.stringify(result), status: entry.status }); }
     return { agent: agent.name, ...result };
   } catch (err) {
     setTaskStatus(task.id, 'pending');
@@ -111,7 +111,7 @@ function isTaskSatisfied(task, tasks) {
     if (a) a.last_heartbeat = new Date().toISOString();
     db.saveAgents(agents);
     const entry = { agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: { action: 'error', error: err.message }, status: 'error' };
-    if (heartbeatBatch) { heartbeatBatch.push(entry); } else { const hbs = db.loadHeartbeats(); hbs.push({ id: nextId('heartbeats'), ...entry, action_taken: JSON.stringify(entry.action_taken) }); db.saveHeartbeats(hbs); }
+    if (heartbeatBatch) { heartbeatBatch.push(entry); } else { db.insertHeartbeat({ agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: JSON.stringify(entry.action_taken), status: 'error' }); }
     return { agent: agent.name, action: 'error', error: err.message };
   }
 }
@@ -138,13 +138,8 @@ async function runHeartbeatTick() {
   const cycleHeartbeats = [];
   try {
     const result = await triggerHeartbeat(dueAgent, cycleHeartbeats);
-    if (cycleHeartbeats.length > 0) {
-      const hbs = db.loadHeartbeats();
-      const maxId = hbs.length > 0 ? Math.max(...hbs.map(h => h.id)) : 0;
-      cycleHeartbeats.forEach((hb, i) => {
-        hbs.push({ id: maxId + i + 1, ...hb, action_taken: JSON.stringify(hb.action_taken) });
-      });
-      db.saveHeartbeats(hbs);
+    for (const hb of cycleHeartbeats) {
+      db.insertHeartbeat({ agent_id: hb.agent_id, triggered_at: hb.triggered_at, action_taken: JSON.stringify(hb.action_taken), status: hb.status });
     }
     heartbeatStats.agentsProcessed++;
     if (result.action === 'error' || result.action === 'failed') heartbeatStats.errors++;
@@ -162,7 +157,6 @@ async function runHeartbeatCycle() {
   const cycleStart = Date.now();
   let results = [];
   const cycleHeartbeats = [];
-  const cycleIdBase = (db.db.prepare('SELECT MAX(id) as maxId FROM heartbeats').get().maxId || 0);
   try {
     const tasks = db.loadTasks();
     const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
@@ -236,12 +230,8 @@ async function runHeartbeatCycle() {
 
     results = await Promise.all(heartbeatPromises);
     if (_broadcastSSE) _broadcastSSE('heartbeat', { results, ts: Date.now() });
-    if (cycleHeartbeats.length > 0) {
-      let idCounter = cycleIdBase;
-      const entries = cycleHeartbeats.map(hb => ({ id: ++idCounter, ...hb, action_taken: JSON.stringify(hb.action_taken) }));
-      const hbs = db.loadHeartbeats();
-      hbs.push(...entries);
-      db.saveHeartbeats(hbs);
+    for (const hb of cycleHeartbeats) {
+      db.insertHeartbeat({ agent_id: hb.agent_id, triggered_at: hb.triggered_at, action_taken: JSON.stringify(hb.action_taken), status: hb.status });
     }
     return results;
   } finally {

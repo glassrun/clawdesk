@@ -17,12 +17,15 @@ const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT ||
 
 let _broadcastSSE = () => {};
 let _sseClients = new Map(); // taskId -> Set<Response>
+let _setTaskStatus = null;
 
 module.exports = {
   setSSEContext(broadcastFn, clientsMap) {
     _broadcastSSE = broadcastFn;
     _sseClients = clientsMap || new Map();
   },
+
+  setSetTaskStatus(fn) { _setTaskStatus = fn; },
 
   broadcastTaskStream(taskId, chunk, type) {
     const payload = JSON.stringify({ task_id: taskId, chunk, type, ts: Date.now() });
@@ -300,7 +303,7 @@ async function executeTask(agent, task, overrideRetry) {
 
   if (executionError) {
     const durationMs = Date.now() - startTime;
-    setTaskStatus(task.id, 'failed');
+    _setTaskStatus(task.id, 'failed');
     if (project && project.workspace_path) {
       const sessionSummary = `Failed task "${task.title}". Agent: ${agent.openclaw_agent_id}. Error: ${executionError.message}.`;
       projectBrain.appendSessionMemory(project, sessionSummary);
@@ -363,7 +366,7 @@ async function executeTask(agent, task, overrideRetry) {
     console.log(`[executor] usage tracking: ${e.message}`);
   }
 
-  setTaskStatus(task.id, 'done');
+  _setTaskStatus(task.id, 'done');
   if (project && project.workspace_path) {
     const sessionSummary = `Completed task "${task.title}". Agent: ${agent.openclaw_agent_id}. Duration: ${durationMs}ms. Tokens: ${usage.totalTokens}. Cost: $${usage.estimatedCostUsd}.`;
     projectBrain.appendSessionMemory(project, sessionSummary);

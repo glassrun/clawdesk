@@ -20,7 +20,7 @@ type FilterStatus = "all" | "ok" | "warning" | "failed" | "idle";
 export default function HeartbeatsPage() {
   const [heartbeats, setHeartbeats] = useState<Heartbeat[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<FilterStatus>("ok");
+  const [filter, setFilter] = useState<FilterStatus>("all");
   const { lastMessage, connected } = useStream();
 
   const refreshData = useCallback(async () => {

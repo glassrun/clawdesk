@@ -184,6 +184,7 @@ function setTaskStatus(taskId, newStatus) {
 // Register SSE context with executor and heartbeat services
 const executor = require('./services/executor');
 executor.setSSEContext(broadcastSSE, taskSseClients);
+executor.setSetTaskStatus(setTaskStatus);
 
 const scheduler = require('./services/scheduler');
 scheduler.setBroadcastSSE(broadcastSSE);
