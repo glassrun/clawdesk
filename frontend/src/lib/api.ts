@@ -153,7 +153,7 @@ export async function deleteAgent(id: number) {
   return api<{ success: boolean }>(`/api/agents/${id}?force=1`, { method: 'DELETE' });
 }
 
-export async function createProject(data: { title: string; description?: string; workspace_path?: string; status?: string; is_template?: boolean }) {
+export async function createProject(data: { title: string; description?: string; workspace_path?: string; status?: string; is_template?: number }) {
   return api<{ project: Project }>('/api/projects', { method: 'POST', body: JSON.stringify(data) });
 }
 
@@ -162,11 +162,11 @@ export async function cloneProject(id: number) {
 }
 
 export async function getProjectTemplates() {
-  const res = await api<Project[]>('/api/projects?template=1');
-  return Array.isArray(res) ? res : [];
+  const res = await api<{ projects: Project[] }>('/api/projects?template=1');
+  return res?.projects ?? [];
 }
 
-export async function updateProject(id: number, data: Partial<Project> & { is_template?: boolean }) {
+export async function updateProject(id: number, data: Partial<Project> & { is_template?: boolean | number }) {
   return api<Project>(`/api/projects/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 }
 

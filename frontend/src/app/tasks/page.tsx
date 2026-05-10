@@ -107,8 +107,8 @@ export default function TasksPage() {
       setTasks(tasksRes.data || []);
       setTotal(tasksRes.total);
       setPages(tasksRes.pages);
-      setAgents(agentsRes);
-      setProjects(projectsRes);
+      setAgents(agentsRes.agents ?? []);
+      setProjects(projectsRes.projects ?? []);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, [buildParams]);
@@ -151,7 +151,7 @@ export default function TasksPage() {
     setRunningTask(id);
     try {
       await runTask(id);
-      const { results } = await getTaskResults(id);
+      const results = await getTaskResults(id);
       setTaskResults(prev => ({ ...prev, [id]: results ?? [] }));
     } catch (e) { console.error(e); }
     finally { setRunningTask(null); loadData(); }
@@ -177,7 +177,7 @@ export default function TasksPage() {
 
   const toggleResults = async (id: number) => {
     if (expandedResults === id) { setExpandedResults(null); return; }
-    const { results } = await getTaskResults(id);
+    const results = await getTaskResults(id);
     setTaskResults(prev => ({ ...prev, [id]: results ?? [] }));
     setExpandedResults(id);
   };
@@ -191,8 +191,8 @@ export default function TasksPage() {
     setFormProject(task.project_id);
     setFormDepIds(task.dependency_ids ? (() => { try { const p = JSON.parse(task.dependency_ids); return Array.isArray(p) ? p : []; } catch { return []; } })() : []);
     setFormScheduledAt(task.scheduled_at ? task.scheduled_at.slice(0, 16) : "");
-    setFormRepeat(task.repeat === true);
-    setFormRequiresApproval(!!task.requires_approval);
+    setFormRepeat(task.repeat === 1 ? true : false);
+    setFormRequiresApproval(task.requires_approval === 1);
     setShowEditModal(true);
   };
 
@@ -207,8 +207,8 @@ export default function TasksPage() {
       project_id: formProject,
       dependency_ids: formDepIds.length > 0 ? JSON.stringify(formDepIds) : undefined,
       scheduled_at: formScheduledAt || undefined,
-      repeat: formRepeat || undefined,
-      requires_approval: formRequiresApproval || undefined,
+      repeat: formRepeat ? 1 : undefined,
+      requires_approval: formRequiresApproval ? 1 : undefined,
     });
     setShowEditModal(false);
     loadData();
@@ -224,8 +224,8 @@ export default function TasksPage() {
       assigned_agent_id: formAgent ? +formAgent : undefined,
       dependency_ids: formDepIds.length > 0 ? JSON.stringify(formDepIds) : undefined,
       scheduled_at: formScheduledAt || undefined,
-      repeat: formRepeat || undefined,
-      requires_approval: formRequiresApproval || undefined,
+      repeat: formRepeat ? 1 : undefined,
+      requires_approval: formRequiresApproval ? 1 : undefined,
     });
     setShowAddModal(false);
     setFormTitle(""); setFormDesc(""); setFormPriority("medium"); setFormAgent(""); setFormProject(projects[0]?.id || 0); setFormDepIds([]); setFormScheduledAt(""); setFormRepeat(false); setFormRequiresApproval(false);

@@ -24,7 +24,7 @@ export default function ProjectsPage() {
   const [formTitle, setFormTitle] = useState("");
   const [formDesc, setFormDesc] = useState("");
   const [formStatus, setFormStatus] = useState("active");
-  const [formIsTemplate, setFormIsTemplate] = useState(false);
+  const [formIsTemplate, setFormIsTemplate] = useState(0);
   const [addTab, setAddTab] = useState<"blank" | "template">("blank");
   const [menuOpen, setMenuOpen] = useState<number | null>(null);
 
@@ -39,7 +39,7 @@ export default function ProjectsPage() {
   });
 
   const projects = projectsData?.projects ?? [];
-  const templates = templatesData || [];
+  const templates = templatesData ?? [];
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -51,9 +51,9 @@ export default function ProjectsPage() {
 
   const handleAdd = async () => {
     if (!formTitle.trim()) return;
-    await createProject({ title: formTitle, description: formDesc, status: formStatus, is_template: formIsTemplate });
+    await createProject({ title: formTitle, description: formDesc, status: formStatus, is_template: formIsTemplate || undefined });
     setShowAddModal(false);
-    setFormTitle(""); setFormDesc(""); setFormStatus("active"); setFormIsTemplate(false);
+    setFormTitle(""); setFormDesc(""); setFormStatus("active"); setFormIsTemplate(0);
     refetchProjects();
   };
 
@@ -71,7 +71,7 @@ export default function ProjectsPage() {
       title: p.title + " (template)",
       description: p.description,
       status: "active",
-      is_template: true,
+      is_template: 1,
     });
     refetchProjects();
   };
@@ -87,13 +87,13 @@ export default function ProjectsPage() {
     setFormTitle(project.title);
     setFormDesc(project.description || "");
     setFormStatus(project.status || "active");
-    setFormIsTemplate(!!project.is_template);
+    setFormIsTemplate(project.is_template ? 1 : 0);
     setShowEditModal(true);
   };
 
   const handleEditSave = async () => {
     if (!editProject) return;
-    await updateProject(editProject.id, { title: formTitle, description: formDesc, status: formStatus, is_template: formIsTemplate });
+    await updateProject(editProject.id, { title: formTitle, description: formDesc, status: formStatus, is_template: formIsTemplate || undefined });
     setShowEditModal(false);
     refetchProjects();
   };
@@ -172,7 +172,7 @@ export default function ProjectsPage() {
                 <option value="failed">Failed</option>
               </select>
               <label className="flex items-center gap-2 mt-2 cursor-pointer">
-                <input type="checkbox" checked={formIsTemplate} onChange={(e) => setFormIsTemplate(e.target.checked)} />
+                <input type="checkbox" checked={formIsTemplate === 1} onChange={(e) => setFormIsTemplate(e.target.checked ? 1 : 0)} />
                 <span className="text-sm">Save as template</span>
                 <span className="text-xs text-muted">📋</span>
               </label>
@@ -222,7 +222,7 @@ export default function ProjectsPage() {
               <option value="failed">Failed</option>
             </select>
             <label className="flex items-center gap-2 mt-2 cursor-pointer">
-              <input type="checkbox" checked={formIsTemplate} onChange={(e) => setFormIsTemplate(e.target.checked)} />
+              <input type="checkbox" checked={formIsTemplate === 1} onChange={(e) => setFormIsTemplate(e.target.checked ? 1 : 0)} />
               <span className="text-sm">Save as template</span>
               <span className="text-xs text-muted">📋</span>
             </label>

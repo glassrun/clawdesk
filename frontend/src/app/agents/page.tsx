@@ -122,7 +122,7 @@ export default function AgentsPage() {
       await updateAgent(editAgent.id, {
         name: formName,
         status: formStatus,
-        heartbeat_enabled: formHbEnabled === 1,
+        heartbeat_enabled: formHbEnabled ? 1 : 0,
         heartbeat_interval: formHbInterval,
         budget_limit: formBudgetLimit,
       });
