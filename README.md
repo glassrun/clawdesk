@@ -75,155 +75,40 @@ ClawDesk is the orchestration layer on top of OpenClaw. It doesn't replace OpenC
 - **Dependencies** ensure tasks execute in the right order (with circular dependency detection)
 - **Agent coordination** — agents can create new tasks and delegate to other agents
 
-## Architecture: HSBA
-
-ClawDesk uses a **Hierarchical Stigmergic Blackboard Architecture (HSBA)** — a multi-agent coordination pattern where agents share a common workspace and coordinate indirectly through artifacts.
+## Architecture
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│  LAYER 1: Shared Workspace (BLACKBOARD)                        │
+│  LAYER 1: Shared Workspace                                     │
 │  ~/clawdesk-projects/{project-slug}/                          │
 │  Agents read/write shared files — no direct communication      │
 └────────────────────────────────────────────────────────────────┘
                               ↓
 ┌────────────────────────────────────────────────────────────────┐
-│  LAYER 2: Task Queue (PULL-BASED SCHEDULING)                   │
+│  LAYER 2: Task Queue (pull-based scheduling)                   │
 │  Tasks addressed to specific agents — not broadcast             │
 │  Agents pull their own tasks on heartbeat tick                 │
 └────────────────────────────────────────────────────────────────┘
                               ↓
 ┌────────────────────────────────────────────────────────────────┐
 │  LAYER 3: Heartbeat Engine (1-second tick)                     │
-│  Wakes agents — does not assign or dispatch                    │
+│  Wakes agents — does not assign or dispatch                     │
 │  Auto-resets stuck tasks, auto-retries failed tasks            │
 └────────────────────────────────────────────────────────────────┘
 ```
 
-See `docs/architecture/blackboard.md` for the full architectural deep-dive including the mycelium metaphor.
+### Key design decisions
 
-## Features
+1. **No direct agent communication** — agents coordinate through artifacts in the shared workspace. Agent A writes a file, Agent B reads it later. No agent needs to know about any other agent.
 
-### Agent Management
-- Sync agents from OpenClaw CLI
-- Create new agents (creates OpenClaw agent + workspace)
-- Reactivate synced-offline agents
-- Per-agent heartbeat interval (1–1440 seconds)
-- Budget tracking per agent
-- Per-agent stats: task counts, projects, heartbeat history
+2. **Pull-based scheduling** — the heartbeat tick wakes agents, agents pull their assigned tasks. The scheduler doesn't track agent state or push work.
 
-### Project & Task Management
-- Projects with optional workspace paths
-- Full task lifecycle: create → assign → run → retry → cancel → duplicate → delete
-- Task priorities (high/medium/low) — heartbeat picks high-priority first
-- Task dependencies with circular dependency detection
-- Projects auto-complete when all tasks done; auto-reopen when tasks are un-done
-- Agent-created tasks show creator slug
-- Bulk operations: update status/priority/agent for up to 100 tasks
-- Task notes for lightweight commentary
-- Task dependency chain inspection and dependents lookup
+3. **Dynamic task tree** — agents can spawn sub-agents and create tasks for other agents at runtime, growing the work graph dynamically.
 
-### Heartbeat Scheduling
-- Engine ticks every 1 second
-- Each agent has its own heartbeat interval
-- Per-agent timeout (600s) — one slow agent doesn't block the cycle
-- Stuck tasks (in_progress > 10 min) auto-reset with warning log
-- Auto-retry failed tasks after 15 minutes (max 3 attempts)
-- Rolling average performance metrics
-- Periodic auto-cleanup every 50 cycles
+### Heartbeat behavior
 
-### Agent Task Creation
-- Agents can create new tasks via `POST /api/projects/:id/tasks/from-agent`
-- Must specify `assigned_to_agent_id` (explicit delegation)
-- Supports optional `dependency_id` with validation
-- Tracks `created_by_agent_id`
-
-### Observability
-- SSE streaming for live dashboard updates
-- Request logging: `METHOD /path STATUS ms`
-- Heartbeat stats: cycle count, rolling avg, per-agent metrics
-- System stats endpoint: counts, file sizes, uptime
-
-## API Reference (44 endpoints)
-
-### Health
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `/health` | GET | Server status, uptime, heartbeat metrics |
-| `/health/ready` | GET | Lightweight readiness probe |
-
-### Agents
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `/api/agents/sync` | POST | Import agents from OpenClaw |
-| `/api/agents` | GET/POST | List (with `?status`, `?search`) / create new agent |
-| `/api/agents/:id` | GET/PUT/DELETE | Single agent CRUD |
-| `/api/agents/:id/heartbeat` | POST | Trigger heartbeat for one agent |
-| `/api/agents/:id/reactivate` | POST | Reactivate inactive agent |
-| `/api/agents/:id/stats` | GET | Per-agent workload and stats |
-| `/api/agents/:id/tasks` | GET | All tasks assigned to agent |
-
-### Projects
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `/api/projects` | GET/POST | List / create |
-| `/api/projects/:id` | GET/PUT/DELETE | Single project CRUD |
-| `/api/projects/:id/reopen` | POST | Reopen completed project |
-| `/api/projects/:id/tasks` | GET/POST | List / create tasks |
-| `/api/projects/:id/tasks/from-agent` | POST | Agent-created task delegation |
-
-### Tasks
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `/api/tasks` | GET | All tasks with filters |
-| `/api/tasks/summary` | GET | Aggregate counts by status/priority/project/agent |
-| `/api/tasks/bulk` | POST | Bulk update (max 100) |
-| `/api/tasks/:id` | GET/PUT/DELETE | Single task CRUD |
-| `/api/tasks/:id/run` | POST | Execute task via OpenClaw agent |
-| `/api/tasks/:id/retry` | POST | Reset failed task to pending |
-| `/api/tasks/:id/cancel` | POST | Cancel in_progress task |
-| `/api/tasks/:id/duplicate` | POST | Clone task with new ID |
-| `/api/tasks/:id/assign` | POST | Reassign to different agent |
-| `/api/tasks/:id/notes` | POST | Append note to task |
-| `/api/tasks/:id/results` | GET | Execution results |
-| `/api/tasks/:id/dependents` | GET | Tasks blocked by this one |
-| `/api/tasks/:id/chain` | GET | Full dependency chain backward |
-| `/api/tasks/:id/history` | GET | Complete context: results, notes, chain, dependents |
-
-### Heartbeats
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `/api/heartbeats` | GET | Activity log |
-| `/api/heartbeats/tick` | POST | Manually trigger heartbeat cycle |
-
-### System
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `/api/system/stats` | GET | Aggregate overview |
-| `/api/system/cleanup` | POST | Remove orphaned data |
-| `/api/system/vacuum` | POST | Vacuum SQLite database |
-| `/api/dashboard` | GET | Stats, agents, projects, recent heartbeats |
-| `/api` | GET | Self-documenting route listing |
-
-## Configuration
-
-| Variable | Default | Description |
-|---|---|---|
-| `PORT` | `3777` | Server port |
-| `BASE_URL` | `http://localhost:${PORT}` | URL used in agent instruction messages |
-| `OPENCLAW_CLI` | `/home/openclaw/.npm-global/bin/openclaw` | OpenClaw CLI path |
-
-## Requirements
-
-- [OpenClaw](https://docs.openclaw.ai) installed and configured
-- Gateway running (`openclaw gateway start`)
-- Node.js 18+
-
-## License
-
-MIT
+- Runs every 1 second
+- Wakes agents — does not assign or dispatch
+- Auto-resets stuck tasks (in_progress > 10 minutes → pending)
+- Auto-retries failed tasks (15 minute cooldown, max 3 attempts)
+- Recurring tasks respawn automatically after completion
