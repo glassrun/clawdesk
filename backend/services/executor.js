@@ -188,6 +188,8 @@ async function executeTask(agent, task, overrideRetry) {
   message += `\nYou can query the project task board to coordinate with other agents:`;
   message += `\nGET ${BASE_URL}/api/projects/${task.project_id}/tasks\xe2\x80\xa2 list all tasks (id, title, status, assigned_agent_id, priority)`;
   message += `\n\nQuery the task board before starting work to see what other agents are doing and avoid duplicate effort.`;
+  message += `\nAfter reading the project workspace, review what other agents have done: check task completion status, read recent artifacts, and identify gaps or issues.`;
+  message += `\nWhere you see gaps, missing information, or tasks that need a different agent's expertise, CREATE TASKS for those agents — do not assume someone else will handle it.`;
   message += `\n\n--- TOOLS ---`;
   message += `\nYou can create new tasks for this project via HTTP POST:`;
   message += `\nURL: ${BASE_URL}/api/projects/${task.project_id}/tasks/from-agent`;
