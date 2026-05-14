@@ -95,6 +95,7 @@ module.exports = function(router, { db, broadcastSSE, broadcastTaskUpdate, setTa
     if (req.query.priority) tasks = tasks.filter(t => t.priority === req.query.priority);
     if (req.query.project_id) tasks = tasks.filter(t => String(t.project_id) === String(req.query.project_id));
     if (req.query.search) { const s = req.query.search.toLowerCase(); tasks = tasks.filter(t => (t.title || '').toLowerCase().includes(s)); }
+    if (req.query.scheduled === '1') tasks = tasks.filter(t => t.scheduled_at);
     const sortBy = req.query.sort_by || 'priority';
     const sortDir = req.query.sort_dir === 'desc' ? -1 : 1;
     const pri = { high: 0, medium: 1, low: 2 };
