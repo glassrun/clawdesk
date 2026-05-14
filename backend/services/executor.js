@@ -189,7 +189,7 @@ async function executeTask(agent, task, overrideRetry) {
   message += `\nGET ${BASE_URL}/api/projects/${task.project_id}/tasks\xe2\x80\xa2 list all tasks (id, title, status, assigned_agent_id, priority)`;
   message += `\n\nQuery the task board before starting work to see what other agents are doing and avoid duplicate effort.`;
   message += `\nAfter reading the project workspace, review what other agents have done: check task completion status, read recent artifacts, and identify gaps or issues.`;
-  message += `\nWhere you see gaps, missing information, or tasks that need a different agent's expertise, CREATE TASKS for those agents — do not assume someone else will handle it.`;
+  message += `\nWhere you see gaps, missing information, or tasks that need a different agent's expertise, CREATE TASKS for those agents — do not assume someone else will handle it. NEVER do the work yourself that should be delegated to another agent — always use the task creation API to assign it. Do not complete sub-tasks internally; if another agent's expertise is better suited, create the task for them.`;
   message += `
 
 --- TOOLS ---`;
@@ -215,6 +215,8 @@ To create MULTIPLE tasks, make MULTIPLE calls - one endpoint call per task.`;
 Response: on success returns {id, title, status, ...}. Use the returned id to chain dependencies into subsequent tasks. Errors return { error: "message" } — if creation fails, log the error and do not assume the task was created. Use Content-Type: application/json header.`;
   message += `
 After creation, tasks enter a pending queue and are picked up asynchronously by the heartbeat engine — do not expect immediate execution.`;
+  message += `
+For every task creation API call you make, include the URL, body, and full response (success or error) in your output so it can be verified. Do not silently skip or assume calls succeeded.`;
   message += `
 `;
   message += `
