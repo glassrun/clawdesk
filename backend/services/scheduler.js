@@ -126,6 +126,12 @@ async function runSchedulerTick() {
     const currentTask = tasks.find(t => t.id === task.id);
     if (!currentTask || currentTask.status !== 'pending') continue;
 
+    // Check dependencies before executing
+    if (!isTaskSatisfied(currentTask, tasks)) {
+      console.log(`[Scheduler] Task #${task.id} "${task.title}" has unsatisfied dependencies, skipping`);
+      continue;
+    }
+
     // Resolve assigned agent with load balancing
     let agent = null;
     if (currentTask.assigned_agent_id) {
