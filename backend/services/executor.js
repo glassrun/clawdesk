@@ -199,6 +199,7 @@ async function executeTask(agent, task, overrideRetry) {
   message += `\ndependency_ids is optional — pass IDs of tasks that must complete before this new task runs (blocks execution until all deps are done).`;
   message += `\nOptional fields: status (default "pending"), scheduled_at (ISO datetime, null = run ASAP), repeat (true/false, auto-reschedule after done), requires_approval (true/false, pauses for human approval before running).`;
   message += `\nTo create MULTIPLE tasks, make MULTIPLE calls - one endpoint call per task.`;
+  message += `\nResponse: on success returns {id, title, status, ...}. Use the returned id to chain dependencies into subsequent tasks. Errors return { error: "message" } — if creation fails, log the error and do not assume the task was created. Use Content-Type: application/json header.`;
   message += `\n`;
   message += `\nYou can create new agents for this project via HTTP POST:`;
   message += `\nURL: ${BASE_URL}/api/agents`;
