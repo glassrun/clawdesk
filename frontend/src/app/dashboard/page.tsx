@@ -307,7 +307,7 @@ export default function DashboardPage() {
         })()}
       </div>
 
-      {/* ── Agent throughput row ── */}
+      {/* ── Agent throughput + Agents row ── */}
       <div className="charts-row">
         {/* Agent throughput bars */}
         <div className="chart-card">
@@ -334,6 +334,38 @@ export default function DashboardPage() {
                 </div>
               );
             })}
+          </div>
+        </div>
+
+        {/* Agents panel */}
+        <div className="panel">
+          <div className="panel-header">
+            <h2>🤖 Agents <span className="text-muted text-sm font-normal">({dash?.agents?.length ?? 0})</span></h2>
+          </div>
+          <div className="table-wrap" style={{ maxHeight: 300, overflowY: 'auto' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Status</th>
+                  <th>Done</th>
+                  <th>Fail</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dash?.agents?.length === 0 && (
+                  <tr><td colSpan={4} className="empty-state">No agents yet</td></tr>
+                )}
+                {dash?.agents?.map((a: any) => (
+                  <tr key={a.id}>
+                    <td className="font-medium">{a.name}</td>
+                    <td><span className={`badge status-${a.status}`}>{a.status}</span></td>
+                    <td className="text-center text-green text-sm">{a.tasks_done ?? 0}</td>
+                    <td className="text-center text-red text-sm">{a.tasks_failed ?? 0}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -389,34 +421,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Agents */}
-        <div className="panel">
-          <div className="panel-header">
-            <h2>🤖 Agents <span className="text-muted text-sm font-normal">({dash?.agents?.length ?? 0})</span></h2>
-          </div>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Agent ID</th>
-                  <th>Status</th>
-                  <th>HB Int.</th>
-                  <th>Last HB</th>
-                  <th className="text-center">Done</th>
-                  <th className="text-center">Fail</th>
-                  <th className="text-right">Budget</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dash?.agents?.length === 0 && (
-                  <tr><td colSpan={8} className="empty-state">No agents yet</td></tr>
-                )}
-                {dash?.agents?.map((a: any) => <AgentRow key={a.id} agent={a} />)}
-              </tbody>
-            </table>
-          </div>
-        </div>
       </div>
 
       {/* ── Live Activity Feed ── */}
