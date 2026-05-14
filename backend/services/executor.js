@@ -190,22 +190,43 @@ async function executeTask(agent, task, overrideRetry) {
   message += `\n\nQuery the task board before starting work to see what other agents are doing and avoid duplicate effort.`;
   message += `\nAfter reading the project workspace, review what other agents have done: check task completion status, read recent artifacts, and identify gaps or issues.`;
   message += `\nWhere you see gaps, missing information, or tasks that need a different agent's expertise, CREATE TASKS for those agents — do not assume someone else will handle it.`;
-  message += `\n\n--- TOOLS ---`;
-  message += `\nYou can create new tasks for this project via HTTP POST:`;
-  message += `\nURL: ${BASE_URL}/api/projects/${task.project_id}/tasks/from-agent`;
-  message += `\nBody (JSON): { agent_id: "${agent.openclaw_agent_id}", title: "task title", description: "details", assigned_to_agent_id: "target-agent", priority: "medium", dependency_ids: [task_id_1, task_id_2], status: "pending", scheduled_at: null, repeat: false, requires_approval: false }`;
-  message += `\nValid agent IDs: ${db.loadAgents().map(a => a.openclaw_agent_id).join(', ')}`;
-  message += `\nIMPORTANT: assigned_to_agent_id is REQUIRED. Pick the agent who should do the work.`;
-  message += `\ndependency_ids is optional — pass IDs of tasks that must complete before this new task runs (blocks execution until all deps are done).`;
-  message += `\nOptional fields: status (default "pending"), scheduled_at (ISO datetime, null = run ASAP), repeat (true/false, auto-reschedule after done), requires_approval (true/false, pauses for human approval before running).`;
-  message += `\nTo create MULTIPLE tasks, make MULTIPLE calls - one endpoint call per task.`;
-  message += `\nResponse: on success returns {id, title, status, ...}. Use the returned id to chain dependencies into subsequent tasks. Errors return { error: "message" } — if creation fails, log the error and do not assume the task was created. Use Content-Type: application/json header.`;
-  message += `\n`;
-  message += `\nYou can create new agents for this project via HTTP POST:`;
-  message += `\nURL: ${BASE_URL}/api/agents`;
-  message += `\nBody (JSON): { job_title: "Senior Security Engineer", job_description: "Penetration testing, audits..." }`;
-  message += `\nThis creates the agent, its workspace, identity files, and registers it with OpenClaw.`;
-  message += `\nAfter creating an agent, you can assign tasks to it using the task creation endpoint above.`;
+  message += `
+
+--- TOOLS ---`;
+  message += `
+You can create new tasks for this project via HTTP POST:`;
+  message += `
+URL: ${BASE_URL}/api/projects/${task.project_id}/tasks/from-agent`;
+  message += `
+Body (JSON): { agent_id: "${agent.openclaw_agent_id}", title: "task title", description: "details", assigned_to_agent_id: "target-agent", priority: "medium", dependency_ids: [task_id_1, task_id_2], status: "pending", scheduled_at: null, repeat: false, requires_approval: false }`;
+  message += `
+Valid agent IDs: ${db.loadAgents().map(a => a.openclaw_agent_id).join(', ')}`;
+  message += `
+IMPORTANT: assigned_to_agent_id value must EXACTLY match one of the listed agent IDs (no nicknames or aliases). Use GET ${BASE_URL}/api/projects/${task.project_id}/tasks to discover IDs before creating dependency chains.`;
+  message += `
+Title is required and max 500 chars. description is optional but recommended.`;
+  message += `
+dependency_ids is optional — pass IDs of tasks that must complete before this new task runs (blocks execution until all deps are done). Call GET on the project task board first to get IDs.`;
+  message += `
+Optional fields: status (default "pending"), scheduled_at (ISO datetime, null = run ASAP), repeat (true/false, auto-reschedule after done), requires_approval (true/false, pauses for human approval before running).`;
+  message += `
+To create MULTIPLE tasks, make MULTIPLE calls - one endpoint call per task.`;
+  message += `
+Response: on success returns {id, title, status, ...}. Use the returned id to chain dependencies into subsequent tasks. Errors return { error: "message" } — if creation fails, log the error and do not assume the task was created. Use Content-Type: application/json header.`;
+  message += `
+After creation, tasks enter a pending queue and are picked up asynchronously by the heartbeat engine — do not expect immediate execution.`;
+  message += `
+`;
+  message += `
+You can create new agents for this project via HTTP POST:`;
+  message += `
+URL: ${BASE_URL}/api/agents`;
+  message += `
+Body (JSON): { job_title: "Senior Security Engineer", job_description: "Penetration testing, audits..." }`;
+  message += `
+This creates the agent, its workspace, identity files, and registers it with OpenClaw.`;
+  message += `
+After creating an agent, you can assign tasks to it using the task creation endpoint above.`;
 
   let createdAgentInfo = null;
 
