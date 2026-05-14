@@ -193,10 +193,11 @@ async function executeTask(agent, task, overrideRetry) {
   message += `\n\n--- TOOLS ---`;
   message += `\nYou can create new tasks for this project via HTTP POST:`;
   message += `\nURL: ${BASE_URL}/api/projects/${task.project_id}/tasks/from-agent`;
-  message += `\nBody (JSON): { agent_id: "${agent.openclaw_agent_id}", title: "task title", description: "details", assigned_to_agent_id: "target-agent", priority: "medium", dependency_ids: [task_id_1, task_id_2] }`;
+  message += `\nBody (JSON): { agent_id: "${agent.openclaw_agent_id}", title: "task title", description: "details", assigned_to_agent_id: "target-agent", priority: "medium", dependency_ids: [task_id_1, task_id_2], status: "pending", scheduled_at: null, repeat: false, requires_approval: false }`;
   message += `\nValid agent IDs: ${db.loadAgents().map(a => a.openclaw_agent_id).join(', ')}`;
   message += `\nIMPORTANT: assigned_to_agent_id is REQUIRED. Pick the agent who should do the work.`;
   message += `\ndependency_ids is optional — pass IDs of tasks that must complete before this new task runs (blocks execution until all deps are done).`;
+  message += `\nOptional fields: status (default "pending"), scheduled_at (ISO datetime, null = run ASAP), repeat (true/false, auto-reschedule after done), requires_approval (true/false, pauses for human approval before running).`;
   message += `\nTo create MULTIPLE tasks, make MULTIPLE calls - one endpoint call per task.`;
   message += `\n`;
   message += `\nYou can create new agents for this project via HTTP POST:`;
