@@ -122,6 +122,17 @@ export default function TasksPage() {
 
   useEffect(() => { loadData(); }, []);
 
+  // Re-fetch when filters or search change
+  useEffect(() => {
+    setPage(1);
+    const params = buildParams();
+    getTasks(params).then(r => {
+      setTasks(r.data || []);
+      setTotal(r.total);
+      setPages(r.pages);
+    }).catch(console.error);
+  }, [search, filterStatus, filterPriority, filterAgent, filterProject, filterScheduled]);
+
   useEffect(() => { loadApprovals(); }, []);
 
   useEffect(() => {
