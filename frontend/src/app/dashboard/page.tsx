@@ -266,50 +266,49 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ── Charts row ── */}
+      {/* ── Task Status Breakdown (own row) ── */}
+      <div className="chart-card" style={{ marginBottom: 20 }}>
+        <div className="chart-title">Task Status Breakdown</div>
+        {(() => {
+          const byStatus = dash?.agents?.reduce((acc: any, a: any) => {
+            acc.pending = (acc.pending || 0) + (a.tasks_pending || 0);
+            acc.in_progress = (acc.in_progress || 0) + (a.tasks_in_progress || 0);
+            acc.done = (acc.done || 0) + (a.tasks_done || 0);
+            acc.failed = (acc.failed || 0) + (a.tasks_failed || 0);
+            return acc;
+          }, { pending: 0, in_progress: 0, done: 0, failed: 0 });
+          const sTotal = (byStatus?.pending || 0) + (byStatus?.in_progress || 0) + (byStatus?.done || 0) + (byStatus?.failed || 0);
+          const pct = (n: number) => sTotal > 0 ? `${Math.round((n / sTotal) * 100)}%` : '0%';
+          return (
+            <>
+              <div className="task-bar-chart">
+                {byStatus?.pending > 0 && (
+                  <div className="task-bar-segment pending" style={{ flex: byStatus.pending }} title={`Pending: ${byStatus.pending}`}>{pct(byStatus.pending)}</div>
+                )}
+                {byStatus?.in_progress > 0 && (
+                  <div className="task-bar-segment in_progress" style={{ flex: byStatus.in_progress }} title={`In Progress: ${byStatus.in_progress}`}>{pct(byStatus.in_progress)}</div>
+                )}
+                {byStatus?.done > 0 && (
+                  <div className="task-bar-segment done" style={{ flex: byStatus.done }} title={`Done: ${byStatus.done}`}>{pct(byStatus.done)}</div>
+                )}
+                {byStatus?.failed > 0 && (
+                  <div className="task-bar-segment failed" style={{ flex: byStatus.failed }} title={`Failed: ${byStatus.failed}`}>{pct(byStatus.failed)}</div>
+                )}
+                {sTotal === 0 && <div className="task-bar-segment" style={{ flex: 1, background: 'var(--bg-hover)' }} />}
+              </div>
+              <div className="task-bar-legend">
+                <div className="legend-item"><div className="legend-dot" style={{background:'var(--text-soft)'}}/>Pending {byStatus?.pending ?? 0}</div>
+                <div className="legend-item"><div className="legend-dot" style={{background:'var(--warning)'}}/>In Progress {byStatus?.in_progress ?? 0}</div>
+                <div className="legend-item"><div className="legend-dot" style={{background:'var(--success)'}}/>Done {byStatus?.done ?? 0}</div>
+                <div className="legend-item"><div className="legend-dot" style={{background:'var(--danger)'}}/>Failed {byStatus?.failed ?? 0}</div>
+              </div>
+            </>
+          );
+        })()}
+      </div>
+
+      {/* ── Agent throughput row ── */}
       <div className="charts-row">
-
-        {/* Task status breakdown */}
-        <div className="chart-card">
-          <div className="chart-title">Task Status Breakdown</div>
-          {(() => {
-            const byStatus = dash?.agents?.reduce((acc: any, a: any) => {
-              acc.pending = (acc.pending || 0) + (a.tasks_pending || 0);
-              acc.in_progress = (acc.in_progress || 0) + (a.tasks_in_progress || 0);
-              acc.done = (acc.done || 0) + (a.tasks_done || 0);
-              acc.failed = (acc.failed || 0) + (a.tasks_failed || 0);
-              return acc;
-            }, { pending: 0, in_progress: 0, done: 0, failed: 0 });
-            const sTotal = (byStatus?.pending || 0) + (byStatus?.in_progress || 0) + (byStatus?.done || 0) + (byStatus?.failed || 0);
-            const pct = (n: number) => sTotal > 0 ? `${Math.round((n / sTotal) * 100)}%` : '0%';
-            return (
-              <>
-                <div className="task-bar-chart">
-                  {byStatus?.pending > 0 && (
-                    <div className="task-bar-segment pending" style={{ flex: byStatus.pending }} title={`Pending: ${byStatus.pending}`}>{pct(byStatus.pending)}</div>
-                  )}
-                  {byStatus?.in_progress > 0 && (
-                    <div className="task-bar-segment in_progress" style={{ flex: byStatus.in_progress }} title={`In Progress: ${byStatus.in_progress}`}>{pct(byStatus.in_progress)}</div>
-                  )}
-                  {byStatus?.done > 0 && (
-                    <div className="task-bar-segment done" style={{ flex: byStatus.done }} title={`Done: ${byStatus.done}`}>{pct(byStatus.done)}</div>
-                  )}
-                  {byStatus?.failed > 0 && (
-                    <div className="task-bar-segment failed" style={{ flex: byStatus.failed }} title={`Failed: ${byStatus.failed}`}>{pct(byStatus.failed)}</div>
-                  )}
-                  {sTotal === 0 && <div className="task-bar-segment" style={{ flex: 1, background: 'var(--bg-hover)' }} />}
-                </div>
-                <div className="task-bar-legend">
-                  <div className="legend-item"><div className="legend-dot" style={{background:'var(--text-soft)'}}/>Pending {byStatus?.pending ?? 0}</div>
-                  <div className="legend-item"><div className="legend-dot" style={{background:'var(--warning)'}}/>In Progress {byStatus?.in_progress ?? 0}</div>
-                  <div className="legend-item"><div className="legend-dot" style={{background:'var(--success)'}}/>Done {byStatus?.done ?? 0}</div>
-                  <div className="legend-item"><div className="legend-dot" style={{background:'var(--danger)'}}/>Failed {byStatus?.failed ?? 0}</div>
-                </div>
-              </>
-            );
-          })()}
-        </div>
-
         {/* Agent throughput bars */}
         <div className="chart-card">
           <div className="chart-title">Agent Throughput</div>
