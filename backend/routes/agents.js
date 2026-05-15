@@ -52,6 +52,8 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
       agents.push(agent);
       db.saveAgents(agents);
       broadcastSSE('agents', { action: 'created', agent });
+      // Sync with OpenClaw to pick up the new agent's workspace/identity
+      setTimeout(() => { try { require('http').get(`${process.env.BASE_URL || `http://localhost:${process.env.PORT || 3777}`}/api/agents/sync`, () => {}).on('error', () => {}); } catch {} }, 100);
       res.status(201).json({ agent, openclaw: oc });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
