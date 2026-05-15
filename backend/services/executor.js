@@ -74,7 +74,19 @@ function runOpenClawAgent(agentId, message, cwd, onChunk) {
     child.on('error', err => reject(new Error('spawn error: ' + err.message)));
     child.on('close', code => {
       let result = null;
-      if (stdout && stdout.trim()) { try { result = JSON.parse(stdout.trim()); } catch {} }
+      if (stdout && stdout.trim()) {
+        try { result = JSON.parse(stdout.trim()); } catch {
+          // Check for success marker first
+          const marker = 'TASK_SUCCESS_CONFIRMED';
+          if (stdout.includes(marker)) {
+            return resolve({ status: 'ok', summary: 'completed', _raw: stdout.trim().substring(0, 2000) });
+          }
+          // No marker → treat as failure even with exit 0 (likely an error msg)
+          const errMsg = 'openclaw agent did not emit TASK_SUCCESS_CONFIRMED — treating as failed';
+          reject(new Error(errMsg + '\nOutput: ' + stdout.trim().substring(0, 500)));
+          return;
+        }
+      }
       if (result && result.status === 'ok') return resolve(result);
       if (result && !code) return resolve(result);
       if (code && result) return resolve(result);
@@ -181,8 +193,11 @@ async function executeTask(agent, task, overrideRetry) {
   if (project) {
     message += `\nProject: ${project.title} - ${project.description}`;
   }
-  message += `\nTask: ${task.title}`;
+  message += `
+Task: ${task.title}`;
   if (task.description) message += `\n${task.description}`;
+  message += `\n\nIMPORTANT: When you have completed the task successfully, you MUST print this exact string on its own line at the very end of your response: TASK_SUCCESS_CONFIRMED`;
+  message += `\nDo NOT print this string if the task is not fully complete, if you encountered an error, or if you are asking for clarification. Only print it when the work is truly done.`;
 
   message += `\n\n--- TASK BOARD ---`;
   message += `\nYou can query the project task board to coordinate with other agents:`;
