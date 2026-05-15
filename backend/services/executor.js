@@ -199,43 +199,21 @@ Task: ${task.title}`;
   message += `\n\nIMPORTANT: When you have completed the task successfully, you MUST print this exact string on its own line at the very end of your response: TASK_SUCCESS_CONFIRMED`;
   message += `\nDo NOT print this string if the task is not fully complete, if you encountered an error, or if you are asking for clarification. Only print it when the work is truly done.`;
 
-  message += `\n\n--- TASK BOARD ---`;
-  message += `\nYou can query the project task board to coordinate with other agents:`;
-  message += `\nGET ${BASE_URL}/api/projects/${task.project_id}/tasks\xe2\x80\xa2 list all tasks (id, title, status, assigned_agent_id, priority)`;
-  message += `\n\nQuery the task board before starting work to see what other agents are doing and avoid duplicate effort.`;
-  message += `\nAfter reading the project workspace, review what other agents have done: check task completion status, read recent artifacts, and identify gaps or issues.`;
-  message += `\nWhere you see gaps, missing information, or tasks that need a different agent's expertise, CREATE TASKS for those agents — do not assume someone else will handle it. NEVER do the work yourself that should be delegated to another agent — always use the task creation API to assign it. Do not complete sub-tasks internally; if another agent's expertise is better suited, create the task for them.`;
-  message += `
---- TASK DELEGATION (IMPORTANT) ---
-Use the task creation API to delegate work to other agents. Never silently skip delegation — if another agent's expertise is better suited, create a task for them instead of doing the work yourself.
-
-URL: ${BASE_URL}/api/projects/${task.project_id}/tasks/from-agent`;
-  message += `
-Body (JSON): { agent_id: "${agent.openclaw_agent_id}", title: "task title", description: "details", assigned_to_agent_id: "target-agent", priority: "medium", dependency_ids: [task_id_1, task_id_2], status: "pending", scheduled_at: null, repeat: false, requires_approval: false }`;
-  message += `
-Valid agent IDs: ${db.loadAgents().map(a => a.openclaw_agent_id).join(', ')}`;
-  message += `
-IMPORTANT: assigned_to_agent_id value must EXACTLY match one of the listed agent IDs (no nicknames or aliases). Use GET ${BASE_URL}/api/projects/${task.project_id}/tasks to discover IDs before creating dependency chains.`;
-  message += `
-Title is required and max 500 chars. description is optional but recommended.`;
-  message += `
-CRITICAL: dependency_ids is how you chain tasks together. Pass the ID of any task that must complete BEFORE this new task runs. The scheduler blocks execution until ALL dependency_ids tasks are done. For example: if Task B requires Task A to finish first, create Task B with { dependency_ids: [task_A_returned_id] }. Without this, tasks run in arbitrary order and your pipeline will break.`;
-  message += `
-After creation, tasks enter a pending queue and are picked up asynchronously by the heartbeat engine — do not expect immediate execution.`;
-  message += `
-For every task creation API call you make, include the URL, body, and full response (success or error) in your output so it can be verified. Do not silently skip or assume calls succeeded.`;
-  message += `
-`;
-  message += `
-You can create new agents for this project via HTTP POST:`;
-  message += `
-URL: ${BASE_URL}/api/agents`;
-  message += `
-Body (JSON): { job_title: "Senior Security Engineer", job_description: "Penetration testing, audits..." }`;
-  message += `
-This creates the agent, its workspace, identity files, and registers it with OpenClaw.`;
-  message += `
-After creating an agent, you can assign tasks to it using the task creation endpoint above.`;
+  message += `\n\n--- TASK DELEGATION (CRITICAL) ---`;
+  message += `\nBreak every non-trivial task into MULTIPLE smaller tasks with dependency chains. Do NOT attempt the full task yourself in one go — always decompose it.`;
+  message += `\nRule: if a task has more than one distinct step or area of work, create a SEPARATE task for each step and link them with dependency_ids.`;
+  message += `\nURL: ${BASE_URL}/api/projects/${task.project_id}/tasks/from-agent`;
+  message += `\nBody (JSON): { agent_id: "${agent.openclaw_agent_id}", title: "task title", description: "details", assigned_to_agent_id: "target-agent", priority: "medium", dependency_ids: [task_id_1, task_id_2], status: "pending", scheduled_at: null, repeat: false, requires_approval: false }`;
+  message += `\nValid agent IDs: ${db.loadAgents().map(a => a.openclaw_agent_id).join()}`;
+  message += `\nIMPORTANT: assigned_to_agent_id value must EXACTLY match one of the listed agent IDs (no nicknames or aliases). Use GET ${BASE_URL}/api/projects/${task.project_id}/tasks to discover IDs before creating dependency chains.`;
+  message += `\nTitle is required and max 500 chars. description is optional but recommended.`;
+  message += `\nCRITICAL: dependency_ids is how you chain tasks. Pass the ID of any task that must complete BEFORE this new task runs. The scheduler blocks execution until ALL dependency_ids tasks are done. For example: Step 1 task (no deps) → Step 2 task { dependency_ids: [step1_id] } → Step 3 task { dependency_ids: [step2_id] }. Without dependencies, tasks run in random order and your pipeline breaks.`;
+  message += `\nTasks enter a pending queue and are picked up asynchronously — do not expect immediate execution.`;
+  message += `\nFor every task creation API call, include the URL, body, and full response (success or error) in your output so it can be verified.`;
+  message += `\nYou can create new agents via HTTP POST: ${BASE_URL}/api/agents`;
+  message += `\n`;
+  message += `\n--- TASK BOARD ---`;
+  message += `\nQuery the project task board to coordinate: GET ${BASE_URL}/api/projects/${task.project_id}/tasks`;
 
   let createdAgentInfo = null;
 
