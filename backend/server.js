@@ -358,6 +358,9 @@ app.post('/api/admin/restart', (req, res) => {
 const server = app.listen(PORT, () => {
   console.log(`ClawDesk running on http://localhost:${PORT}`);
   syncFromOpenClaw().then(r => { console.log(`[Init] Synced ${r.synced.length} agent(s) from OpenClaw (source: ${r.source})`); }).catch(e => { console.log(`[Init] OpenClaw sync failed: ${e.message}`); });
+  const { resetInProgressTasksToPending } = db;
+  const reset = resetInProgressTasksToPending();
+  if (reset.changes > 0) console.log(`[Init] Reset ${reset.changes} in_progress task(s) to pending`);
   heartbeat.startHeartbeatEngine();
 });
 

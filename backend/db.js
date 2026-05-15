@@ -372,6 +372,7 @@ function insertProject(p) {
 // ===================== Tasks =====================
 
 function loadTasks()    { return db.prepare("SELECT * FROM tasks WHERE deleted_at IS NULL").all(); }
+function resetInProgressTasksToPending() { return db.prepare("UPDATE tasks SET status='pending' WHERE status='in_progress'").run(); }
 function saveTasks(data) {
   db.exec("DELETE FROM tasks");
   const ins = db.prepare(`INSERT INTO tasks (id,project_id,assigned_agent_id,title,description,status,priority,dependency_ids,creates_agent,created_by_agent_id,created_at,completed_at,run_count,_retry_count,_status_changed_at,deleted_at,updated_at,repeat,scheduled_at,requires_approval)
@@ -524,6 +525,7 @@ module.exports = {
   insertProject,
   loadTasks,
   saveTasks,
+  resetInProgressTasksToPending,
   insertTask,
   insertTaskBatch,
   updateTask,
