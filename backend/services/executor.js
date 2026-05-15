@@ -198,6 +198,7 @@ Task: ${task.title}`;
   if (task.description) message += `\n${task.description}`;
   message += `\n\nIMPORTANT: When you have completed the task successfully, you MUST print this exact string on its own line at the very end of your response: TASK_SUCCESS_CONFIRMED`;
   message += `\nDo NOT print this string if the task is not fully complete, if you encountered an error, or if you are asking for clarification. Only print it when the work is truly done.`;
+  message += `\nCRITICAL: If your task is to create sub-tasks for other agents, do NOT print TASK_SUCCESS_CONFIRMED until ALL sub-tasks have reached 'done' or 'failed' status. Creating the tasks is not the end of your work — monitor their status via GET ${BASE_URL}/api/projects/${task.project_id}/tasks and only print the marker once the pipeline is complete.`;
 
   message += `\n\n--- TASK BOARD ---`;
   message += `\nYou can query the project task board to coordinate with other agents:`;
