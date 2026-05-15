@@ -193,18 +193,12 @@ async function executeTask(agent, task, overrideRetry) {
   if (project) {
     message += `\nProject: ${project.title} - ${project.description}`;
   }
-  message += `
-Task: ${task.title}`;
-  if (task.description) message += `\n${task.description}`;
-  message += `\n\nIMPORTANT: When you have completed the task successfully, you MUST print this exact string on its own line at the very end of your response: TASK_SUCCESS_CONFIRMED`;
-  message += `\nDo NOT print this string if the task is not fully complete, if you encountered an error, or if you are asking for clarification. Only print it when the work is truly done.`;
-
   message += `\n\n--- TASK DELEGATION (CRITICAL) ---`;
   message += `\nBreak every non-trivial task into MULTIPLE smaller tasks with dependency chains. Do NOT attempt the full task yourself in one go — always decompose it.`;
   message += `\nRule: if a task has more than one distinct step or area of work, create a SEPARATE task for each step and link them with dependency_ids.`;
   message += `\nURL: ${BASE_URL}/api/projects/${task.project_id}/tasks/from-agent`;
   message += `\nBody (JSON): { agent_id: "${agent.openclaw_agent_id}", title: "task title", description: "details", assigned_to_agent_id: "target-agent", priority: "medium", dependency_ids: [task_id_1, task_id_2], status: "pending", scheduled_at: null, repeat: false, requires_approval: false }`;
-  message += `\nValid agent IDs: ${db.loadAgents().map(a => a.openclaw_agent_id).join()}`;
+  message += `\nValid agent IDs: ${db.loadAgents().map(a => a.openclaw_agent_id).join(", ")}`;
   message += `\nIMPORTANT: assigned_to_agent_id value must EXACTLY match one of the listed agent IDs (no nicknames or aliases). Use GET ${BASE_URL}/api/projects/${task.project_id}/tasks to discover IDs before creating dependency chains.`;
   message += `\nTitle is required and max 500 chars. description is optional but recommended.`;
   message += `\nCRITICAL: dependency_ids is how you chain tasks. Pass the ID of any task that must complete BEFORE this new task runs. The scheduler blocks execution until ALL dependency_ids tasks are done. For example: Step 1 task (no deps) → Step 2 task { dependency_ids: [step1_id] } → Step 3 task { dependency_ids: [step2_id] }. Without dependencies, tasks run in random order and your pipeline breaks.`;
@@ -214,6 +208,12 @@ Task: ${task.title}`;
   message += `\n`;
   message += `\n--- TASK BOARD ---`;
   message += `\nQuery the project task board to coordinate: GET ${BASE_URL}/api/projects/${task.project_id}/tasks`;
+
+  message += `
+Task: ${task.title}`;
+  if (task.description) message += `\n${task.description}`;
+  message += `\n\nIMPORTANT: When you have completed the task successfully, you MUST print this exact string on its own line at the very end of your response: TASK_SUCCESS_CONFIRMED`;
+  message += `\nDo NOT print this string if the task is not fully complete, if you encountered an error, or if you are asking for clarification. Only print it when the work is truly done.`;
 
   let createdAgentInfo = null;
 
