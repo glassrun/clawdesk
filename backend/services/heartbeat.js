@@ -88,8 +88,6 @@ function isTaskSatisfied(task, tasks) {
     const a = agents.find(x => x.id === agent.id);
     if (a) a.last_heartbeat = new Date().toISOString();
     db.saveAgents(agents);
-    const entry = { agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: { action: 'no_pending_tasks' }, status: 'idle' };
-    if (heartbeatBatch) { heartbeatBatch.push(entry); } else { db.insertHeartbeat({ agent_id: agent.id, triggered_at: new Date().toISOString(), action_taken: JSON.stringify(entry.action_taken), status: 'idle' }); }
     return { agent: agent.name, action: 'idle' };
   }
   const task = pending[0];
