@@ -365,10 +365,8 @@ export default function DashboardPage() {
           </div>
         </div>
 
-      </div>
 
       {/* ── Row 5: Agent Throughput | Project Completion | Agents (3 columns) ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20, marginBottom: 20 }}>
 
         {/* Agent Throughput */}
         <div className="chart-card">
