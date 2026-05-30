@@ -284,179 +284,185 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Row 4: Task Success Rate | Projects | Live Activity (3 columns) ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20, alignItems: "start", marginBottom: 20 }}>
+      {/* ── Masonry: 3 columns, blocks stack independently ── */}
+      <div style={{ display: "flex", gap: 20, alignItems: "start", marginBottom: 20 }}>
 
-        {/* Task Success Rate */}
-        <div className="chart-card">
-          <div className="chart-title">Task Success Rate</div>
-          <div className="progress-header">
-            <span className="progress-pct" style={{ color: getSuccessColor(successRate) }}>{successRate}%</span>
-          </div>
-          <div className="progress-bar" style={{ marginTop: 8 }}>
-            <div className="progress-fill" style={{ width: `${successRate}%`, background: getProgressGradient(successRate) }} />
-          </div>
-          <div className="progress-footer" style={{ marginTop: 6 }}>
-            <span className="text-green">{completed} OK</span>
-            <span className="text-muted">{total} total</span>
-            <span className="text-red">{failed} fail</span>
-          </div>
-        </div>
-
-        {/* Projects */}
-        <div className="panel">
-          <div className="panel-header">
-            <h2>📁 Projects <span className="text-muted text-sm font-normal">({dash?.projects?.length ?? 0})</span></h2>
-          </div>
-          <div className="table-wrap" style={{ maxHeight: 280, overflowY: 'auto' }}>
-            <table>
-              <thead>
-                <tr>
-                  <th>Title</th>
-                  <th>Tasks</th>
-                  <th>Done</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dash?.projects?.length === 0 && (
-                  <tr><td colSpan={3} className="empty-state">No projects yet</td></tr>
-                )}
-                {dash?.projects?.map((p: any) => (
-                  <tr key={p.id}>
-                    <td className="font-medium truncate" style={{ maxWidth: 120 }} title={p.title}>{p.title}</td>
-                    <td className="text-center text-sm">{p.tasks_total ?? 0}</td>
-                    <td className="text-center text-green text-sm">{p.tasks_done ?? 0}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Project Completion */}
-        {(dash?.projects ?? []).length > 0 ? (
+        {/* Column 1: Agent-focused */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 20 }}>
+          {/* Agent Throughput */}
           <div className="chart-card">
-            <div className="chart-title">Project Completion</div>
-            <div className="completion-bars">
-              {dash?.projects?.map((p: any) => {
-                const pct = p.completion_pct ?? 0;
-                const color = pct >= 80 ? 'var(--success)' : pct >= 50 ? 'var(--warning)' : 'var(--danger)';
+            <div className="chart-title">Agent Throughput</div>
+            <div className="throughput-bars">
+              {dash?.agents?.length === 0 && <div className="empty-state text-sm">No agents yet</div>}
+              {(dash?.agents ?? []).map((a: any) => {
+                const done = a.tasks_done ?? 0;
+                const total = (a.tasks_done ?? 0) + (a.tasks_failed ?? 0) + (a.tasks_pending ?? 0) + (a.tasks_in_progress ?? 0);
+                const maxVal = Math.max(total, 1);
                 return (
-                  <div key={p.id} className="completion-row">
-                    <div className="completion-label" title={p.title}>{p.title}</div>
-                    <div className="completion-track">
-                      <div className="completion-fill" style={{ width: `${pct}%`, background: color }} />
+                  <div key={a.id} className="throughput-row">
+                    <div className="throughput-label" title={a.name}>{a.name}</div>
+                    <div className="throughput-track">
+                      <div className="throughput-done-fill" style={{ width: `${(done / maxVal) * 100}%` }}>
+                        {done > 0 && done}
+                      </div>
+                      {a.tasks_failed > 0 && (
+                        <div className="throughput-fail-fill" style={{ width: `${((a.tasks_failed ?? 0) / maxVal) * 100}%` }} />
+                      )}
                     </div>
-                    <div className="completion-pct" style={{ color }}>{pct}%</div>
+                    <div className="throughput-count">{total > 0 ? `${done}/${total}` : '—'}</div>
                   </div>
                 );
               })}
             </div>
           </div>
-        ) : (
-          <div className="chart-card">
-            <div className="chart-title">Project Completion</div>
-            <div className="empty-state text-sm">No projects yet</div>
-          </div>
-        )}
 
-        {/* Live Activity */}
-        <div className="panel">
-          <div className="panel-header">
-            <h2>📡 Live <span className="flex items-center gap-1 text-sm font-normal text-green"><span className="live-dot" />Live</span></h2>
-          </div>
-          <div className="activity-feed">
-            {recentHeartbeats.length === 0 && <div className="empty-state">No recent activity</div>}
-            {recentHeartbeats.map((hb: any, idx: number) => {
-              let icon = '💓', iconClass = 'heartbeat', title = hb.agent_name ?? '—', meta = '';
-              const raw = (hb.action_taken || hb.action_summary || '') as string;
-              try {
-                const action: any = raw.startsWith('{') ? JSON.parse(raw) : { action: raw };
-                if (action?.action === 'executed') { icon = '⚡'; iconClass = 'heartbeat'; title = `${hb.agent_name ?? '—'} executed task`; meta = action.task_title ? `→ ${action.task_title}` : ''; }
-                else if (action?.action === 'error') { icon = '❌'; iconClass = 'failed'; title = `${hb.agent_name ?? '—'} error`; meta = action.error ? `${action.error}`.substring(0, 60) : ''; }
-                else if (action?.action === 'stuck_reset') { icon = '🔄'; iconClass = 'pending'; title = `${hb.agent_name ?? '—'} reset`; meta = action.title ?? ''; }
-                else if (action?.action === 'auto_retry') { icon = '↺'; iconClass = 'pending'; title = `${hb.agent_name ?? '—'} retry`; meta = `${action.title ?? ''} (${action.attempt ?? ''}/3)`; }
-                else if (action?.action === 'handoff') { icon = '🔀'; iconClass = 'agent'; title = `${hb.agent_name ?? '—'} handoff`; meta = `→ ${action.to}: ${action.title ?? ''}`; }
-                else { title = hb.agent_name ?? '—'; meta = typeof raw === 'string' ? raw.substring(0, 80) : ''; }
-              } catch { title = hb.agent_name ?? '—'; meta = typeof raw === 'string' ? raw.substring(0, 80) : ''; }
-              return (
-                <div key={`hb-${hb.id ?? idx}`} className="activity-item">
-                  <div className={`activity-icon ${iconClass}`}>{icon}</div>
-                  <div className="activity-body">
-                    <div className="activity-title">{title}</div>
-                    {meta && <div className="activity-meta">{meta}</div>}
-                  </div>
-                  <div className="activity-time">{timeAgo(hb.triggered_at)}</div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-
-      {/* ── Row 5: Agent Throughput | Project Completion | Agents (3 columns) ── */}
-
-        {/* Agent Throughput */}
-        <div className="chart-card">
-          <div className="chart-title">Agent Throughput</div>
-          <div className="throughput-bars">
-            {dash?.agents?.length === 0 && <div className="empty-state text-sm">No agents yet</div>}
-            {(dash?.agents ?? []).map((a: any) => {
-              const done = a.tasks_done ?? 0;
-              const total = (a.tasks_done ?? 0) + (a.tasks_failed ?? 0) + (a.tasks_pending ?? 0) + (a.tasks_in_progress ?? 0);
-              const maxVal = Math.max(total, 1);
-              return (
-                <div key={a.id} className="throughput-row">
-                  <div className="throughput-label" title={a.name}>{a.name}</div>
-                  <div className="throughput-track">
-                    <div className="throughput-done-fill" style={{ width: `${(done / maxVal) * 100}%` }}>
-                      {done > 0 && done}
-                    </div>
-                    {a.tasks_failed > 0 && (
-                      <div className="throughput-fail-fill" style={{ width: `${((a.tasks_failed ?? 0) / maxVal) * 100}%` }} />
-                    )}
-                  </div>
-                  <div className="throughput-count">{total > 0 ? `${done}/${total}` : '—'}</div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-
-
-        {/* Agents */}
-        <div className="panel">
-          <div className="panel-header">
-            <h2>🤖 Agents <span className="text-muted text-sm font-normal">({dash?.agents?.length ?? 0})</span></h2>
-          </div>
-          <div className="table-wrap" style={{ maxHeight: 280, overflowY: 'auto' }}>
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Status</th>
-                  <th>Done</th>
-                  <th>Fail</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dash?.agents?.length === 0 && (
-                  <tr><td colSpan={4} className="empty-state">No agents yet</td></tr>
-                )}
-                {dash?.agents?.map((a: any) => (
-                  <tr key={a.id}>
-                    <td className="font-medium">{a.name}</td>
-                    <td><span className={`badge status-${a.status}`}>{a.status}</span></td>
-                    <td className="text-center text-green text-sm">{a.tasks_done ?? 0}</td>
-                    <td className="text-center text-red text-sm">{a.tasks_failed ?? 0}</td>
+          {/* Agents */}
+          <div className="panel">
+            <div className="panel-header">
+              <h2>🤖 Agents <span className="text-muted text-sm font-normal">({dash?.agents?.length ?? 0})</span></h2>
+            </div>
+            <div className="table-wrap" style={{ maxHeight: 280, overflowY: 'auto' }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Status</th>
+                    <th>Done</th>
+                    <th>Fail</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {dash?.agents?.length === 0 && (
+                    <tr><td colSpan={4} className="empty-state">No agents yet</td></tr>
+                  )}
+                  {dash?.agents?.map((a: any) => (
+                    <tr key={a.id}>
+                      <td className="font-medium">{a.name}</td>
+                      <td><span className={`badge status-${a.status}`}>{a.status}</span></td>
+                      <td className="text-center text-green text-sm">{a.tasks_done ?? 0}</td>
+                      <td className="text-center text-red text-sm">{a.tasks_failed ?? 0}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* Column 2: Project-focused */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 20 }}>
+          {/* Projects */}
+          <div className="panel">
+            <div className="panel-header">
+              <h2>📁 Projects <span className="text-muted text-sm font-normal">({dash?.projects?.length ?? 0})</span></h2>
+            </div>
+            <div className="table-wrap" style={{ maxHeight: 280, overflowY: 'auto' }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Title</th>
+                    <th>Tasks</th>
+                    <th>Done</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dash?.projects?.length === 0 && (
+                    <tr><td colSpan={3} className="empty-state">No projects yet</td></tr>
+                  )}
+                  {dash?.projects?.map((p: any) => (
+                    <tr key={p.id}>
+                      <td className="font-medium truncate" style={{ maxWidth: 120 }} title={p.title}>{p.title}</td>
+                      <td className="text-center text-sm">{p.tasks_total ?? 0}</td>
+                      <td className="text-center text-green text-sm">{p.tasks_done ?? 0}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Project Completion */}
+          {(dash?.projects ?? []).length > 0 ? (
+            <div className="chart-card">
+              <div className="chart-title">Project Completion</div>
+              <div className="completion-bars">
+                {dash?.projects?.map((p: any) => {
+                  const pct = p.completion_pct ?? 0;
+                  const color = pct >= 80 ? 'var(--success)' : pct >= 50 ? 'var(--warning)' : 'var(--danger)';
+                  return (
+                    <div key={p.id} className="completion-row">
+                      <div className="completion-label" title={p.title}>{p.title}</div>
+                      <div className="completion-track">
+                        <div className="completion-fill" style={{ width: `${pct}%`, background: color }} />
+                      </div>
+                      <div className="completion-pct" style={{ color }}>{pct}%</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="chart-card">
+              <div className="chart-title">Project Completion</div>
+              <div className="empty-state text-sm">No projects yet</div>
+            </div>
+          )}
+        </div>
+
+        {/* Column 3: System status */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 20 }}>
+          {/* Task Success Rate */}
+          <div className="chart-card">
+            <div className="chart-title">Task Success Rate</div>
+            <div className="progress-header">
+              <span className="progress-pct" style={{ color: getSuccessColor(successRate) }}>{successRate}%</span>
+            </div>
+            <div className="progress-bar" style={{ marginTop: 8 }}>
+              <div className="progress-fill" style={{ width: `${successRate}%`, background: getProgressGradient(successRate) }} />
+            </div>
+            <div className="progress-footer" style={{ marginTop: 6 }}>
+              <span className="text-green">{completed} OK</span>
+              <span className="text-muted">{total} total</span>
+              <span className="text-red">{failed} fail</span>
+            </div>
+          </div>
+
+          {/* Live Activity */}
+          <div className="panel">
+            <div className="panel-header">
+              <h2>📡 Live <span className="flex items-center gap-1 text-sm font-normal text-green"><span className="live-dot" />Live</span></h2>
+            </div>
+            <div className="activity-feed">
+              {recentHeartbeats.length === 0 && <div className="empty-state">No recent activity</div>}
+              {recentHeartbeats.map((hb: any, idx: number) => {
+                let icon = '💓', iconClass = 'heartbeat', title = hb.agent_name ?? '—', meta = '';
+                const raw = (hb.action_taken || hb.action_summary || '') as string;
+                try {
+                  const action: any = raw.startsWith('{') ? JSON.parse(raw) : { action: raw };
+                  if (action?.action === 'executed') { icon = '⚡'; iconClass = 'heartbeat'; title = `${hb.agent_name ?? '—'} executed task`; meta = action.task_title ? `→ ${action.task_title}` : ''; }
+                  else if (action?.action === 'error') { icon = '❌'; iconClass = 'failed'; title = `${hb.agent_name ?? '—'} error`; meta = action.error ? `${action.error}`.substring(0, 60) : ''; }
+                  else if (action?.action === 'stuck_reset') { icon = '🔄'; iconClass = 'pending'; title = `${hb.agent_name ?? '—'} reset`; meta = action.title ?? ''; }
+                  else if (action?.action === 'auto_retry') { icon = '↺'; iconClass = 'pending'; title = `${hb.agent_name ?? '—'} retry`; meta = `${action.title ?? ''} (${action.attempt ?? ''}/3)`; }
+                  else if (action?.action === 'handoff') { icon = '🔀'; iconClass = 'agent'; title = `${hb.agent_name ?? '—'} handoff`; meta = `→ ${action.to}: ${action.title ?? ''}`; }
+                  else { title = hb.agent_name ?? '—'; meta = typeof raw === 'string' ? raw.substring(0, 80) : ''; }
+                } catch { title = hb.agent_name ?? '—'; meta = typeof raw === 'string' ? raw.substring(0, 80) : ''; }
+                return (
+                  <div key={`hb-${hb.id ?? idx}`} className="activity-item">
+                    <div className={`activity-icon ${iconClass}`}>{icon}</div>
+                    <div className="activity-body">
+                      <div className="activity-title">{title}</div>
+                      {meta && <div className="activity-meta">{meta}</div>}
+                    </div>
+                    <div className="activity-time">{timeAgo(hb.triggered_at)}</div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
 
       </div>
+
 
       <div className="system-health">
         <div className="health-item">
