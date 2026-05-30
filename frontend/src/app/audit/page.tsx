@@ -58,12 +58,19 @@ export default function AuditPage() {
     finally { setLoading(false); }
   }, []);
 
+  const refreshData = useCallback(async () => {
+    try {
+      const res = await getHeartbeats({ limit: "500" });
+      setHeartbeats(res.data || []);
+    } catch (e) { console.error(e); }
+  }, []);
+
   useEffect(() => { loadData(); }, []);
 
   useEffect(() => {
     if (!lastMessage) return;
-    if (lastMessage.event === "heartbeat" || lastMessage.event === "tasks") loadData();
-  }, [lastMessage, loadData]);
+    if (lastMessage.event === "heartbeat" || lastMessage.event === "tasks") refreshData();
+  }, [lastMessage, refreshData]);
 
   const agents = [...new Map(heartbeats.map(h => [h.agent_id, { id: h.agent_id, name: h.agent_name || h.openclaw_agent_id }])).values()];
 
