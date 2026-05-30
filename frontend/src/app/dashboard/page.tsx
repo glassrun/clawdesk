@@ -402,8 +402,7 @@ export default function DashboardPage() {
             {dash?.agents?.length === 0 && <div className="empty-state text-sm">No agents yet</div>}
             {(dash?.agents ?? []).map((a: any) => {
               const done = a.tasks_done ?? 0;
-              const failed = a.tasks_failed ?? 0;
-              const total = done + failed;
+              const total = (a.tasks_done ?? 0) + (a.tasks_failed ?? 0) + (a.tasks_pending ?? 0) + (a.tasks_in_progress ?? 0);
               const maxVal = Math.max(total, 1);
               return (
                 <div key={a.id} className="throughput-row">
@@ -412,11 +411,11 @@ export default function DashboardPage() {
                     <div className="throughput-done-fill" style={{ width: `${(done / maxVal) * 100}%` }}>
                       {done > 0 && done}
                     </div>
-                    {failed > 0 && (
-                      <div className="throughput-fail-fill" style={{ width: `${(failed / maxVal) * 100}%` }} />
+                    {a.tasks_failed > 0 && (
+                      <div className="throughput-fail-fill" style={{ width: `${((a.tasks_failed ?? 0) / maxVal) * 100}%` }} />
                     )}
                   </div>
-                  <div className="throughput-count">{total > 0 ? `${done}/${failed}` : '—'}</div>
+                  <div className="throughput-count">{total > 0 ? `${done}/${total}` : '—'}</div>
                 </div>
               );
             })}
