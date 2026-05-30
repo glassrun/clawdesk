@@ -191,7 +191,7 @@ export default function DashboardPage() {
   );
 
   const recentHeartbeats = (dash?.recent_heartbeats ?? [])
-    .filter((hb: any) => !hb.action_summary?.includes('no_pending_tasks'));
+    .filter((hb: any) => !(hb.action_summary || '').includes('no_pending_tasks'));
 
   return (
     <div className="page-wrap">
@@ -437,7 +437,7 @@ export default function DashboardPage() {
               {recentHeartbeats.length === 0 && <div className="empty-state">No recent activity</div>}
               {recentHeartbeats.map((hb: any, idx: number) => {
                 let icon = '💓', iconClass = 'heartbeat', title = hb.agent_name ?? '—', meta = '';
-                const raw = (hb.action_taken || hb.action_summary || '') as string;
+                const raw = (hb.action_summary || '') as string;
                 try {
                   const action: any = raw.startsWith('{') ? JSON.parse(raw) : { action: raw };
                   if (action?.action === 'executed') { icon = '⚡'; iconClass = 'heartbeat'; title = `${hb.agent_name ?? '—'} executed task`; meta = action.task_title ? `→ ${action.task_title}` : ''; }
