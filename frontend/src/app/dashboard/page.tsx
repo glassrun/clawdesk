@@ -332,6 +332,33 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* Project Completion */}
+        {(dash?.projects ?? []).length > 0 ? (
+          <div className="chart-card">
+            <div className="chart-title">Project Completion</div>
+            <div className="completion-bars">
+              {dash?.projects?.map((p: any) => {
+                const pct = p.completion_pct ?? 0;
+                const color = pct >= 80 ? 'var(--success)' : pct >= 50 ? 'var(--warning)' : 'var(--danger)';
+                return (
+                  <div key={p.id} className="completion-row">
+                    <div className="completion-label" title={p.title}>{p.title}</div>
+                    <div className="completion-track">
+                      <div className="completion-fill" style={{ width: `${pct}%`, background: color }} />
+                    </div>
+                    <div className="completion-pct" style={{ color }}>{pct}%</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="chart-card">
+            <div className="chart-title">Project Completion</div>
+            <div className="empty-state text-sm">No projects yet</div>
+          </div>
+        )}
+
         {/* Live Activity */}
         <div className="panel">
           <div className="panel-header">
