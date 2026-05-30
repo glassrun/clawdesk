@@ -292,7 +292,7 @@ app.get('/api/dashboard', (req, res) => {
   const tasks = db.loadTasks();
   const projects = db.loadProjects();
   const hbs = db.loadHeartbeats();
-  const recentHbs = hbs.sort((a, b) => b.id - a.id).slice(0, 10);
+  const recentHbs = hbs.sort((a, b) => b.id - a.id);
   res.json({
     total_agents: agents.length,
     active_tasks: tasks.filter(t => ['pending', 'in_progress'].includes(t.status)).length,

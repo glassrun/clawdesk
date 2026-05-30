@@ -191,8 +191,7 @@ export default function DashboardPage() {
   );
 
   const recentHeartbeats = (dash?.recent_heartbeats ?? [])
-    .filter((hb: any) => !hb.action_summary?.includes('no_pending_tasks'))
-    .slice(0, 12);
+    .filter((hb: any) => !hb.action_summary?.includes('no_pending_tasks'));
 
   return (
     <div className="page-wrap">
