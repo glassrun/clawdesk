@@ -244,7 +244,7 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Row 3: Task Status (full width) ── */}
-      <div className="chart-card" style={{ marginBottom: 20 }}>
+      <div className="chart-card mb-5">
         <div className="chart-title">Task Status</div>
         {(() => {
           const byStatus = dash?.agents?.reduce((acc: any, a: any) => {
@@ -286,12 +286,12 @@ export default function DashboardPage() {
 
       {/* ── Row 4: Task Success Rate | Projects | Live Activity (3 columns) ── */}
       {/* ── Masonry: 3 columns, blocks stack independently ── */}
-      <div style={{ display: "flex", gap: 20, alignItems: "start", marginBottom: 20 }}>
+      <div className="dash-cols">
 
         {/* Column 1: Agent-focused */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 20 }}>
+        <div className="flex flex-col gap-5">
           {/* Agent Throughput */}
-          <div className="chart-card">
+          <div className="chart-card mt-4">
             <div className="chart-title">Agent Throughput</div>
             <div className="throughput-bars">
               {dash?.agents?.length === 0 && <div className="empty-state text-sm">No agents yet</div>}
@@ -318,11 +318,11 @@ export default function DashboardPage() {
           </div>
 
           {/* Agents */}
-          <div className="panel">
+          <div className="panel mt-4">
             <div className="panel-header">
               <h2>🤖 Agents <span className="text-muted text-sm font-normal">({dash?.agents?.length ?? 0})</span></h2>
             </div>
-            <div className="table-wrap" style={{ maxHeight: 280, overflowY: 'auto' }}>
+            <div className="table-wrap overflow-y-auto" style={{ maxHeight: 280, minWidth: 0 }}>
               <table>
                 <thead>
                   <tr>
@@ -351,13 +351,13 @@ export default function DashboardPage() {
         </div>
 
         {/* Column 2: Project-focused */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 20 }}>
+        <div className="flex flex-col gap-5">
           {/* Projects */}
-          <div className="panel">
+          <div className="panel mt-4">
             <div className="panel-header">
               <h2>📁 Projects <span className="text-muted text-sm font-normal">({dash?.projects?.length ?? 0})</span></h2>
             </div>
-            <div className="table-wrap" style={{ maxHeight: 280, overflowY: 'auto' }}>
+            <div className="table-wrap overflow-y-auto" style={{ maxHeight: 280, minWidth: 0 }}>
               <table>
                 <thead>
                   <tr>
@@ -384,7 +384,7 @@ export default function DashboardPage() {
 
           {/* Project Completion */}
           {(dash?.projects ?? []).length > 0 ? (
-            <div className="chart-card">
+            <div className="chart-card mt-4">
               <div className="chart-title">Project Completion</div>
               <div className="completion-bars">
                 {dash?.projects?.map((p: any) => {
@@ -411,9 +411,9 @@ export default function DashboardPage() {
         </div>
 
         {/* Column 3: System status */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 20 }}>
+        <div className="flex flex-col gap-5">
           {/* Task Success Rate */}
-          <div className="chart-card">
+          <div className="chart-card mt-4">
             <div className="chart-title">Task Success Rate</div>
             <div className="progress-header">
               <span className="progress-pct" style={{ color: getSuccessColor(successRate) }}>{successRate}%</span>
@@ -429,7 +429,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Live Activity */}
-          <div className="panel">
+          <div className="panel mt-4">
             <div className="panel-header">
               <h2>📡 Live <span className="flex items-center gap-1 text-sm font-normal text-green"><span className="live-dot" />Live</span></h2>
             </div>
