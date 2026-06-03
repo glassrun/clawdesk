@@ -37,7 +37,6 @@ export default function ProjectDetailPage() {
   const [showAddTask, setShowAddTask] = useState(false);
   const [addTaskTitle, setAddTaskTitle] = useState("");
   const [addTaskPriority, setAddTaskPriority] = useState("medium");
-  const [addTaskCreatesAgent, setAddTaskCreatesAgent] = useState(false);
   const [expandedTaskResults, setExpandedTaskResults] = useState<number | null>(null);
   const [taskResults, setTaskResults] = useState<Record<number, any[]>>({});
   const [runningTask, setRunningTask] = useState<number | null>(null);
@@ -96,11 +95,10 @@ export default function ProjectDetailPage() {
 
   const handleAddTaskSave = async () => {
     if (!addTaskTitle.trim()) return;
-    await createTask(projectId, { title: addTaskTitle, priority: addTaskPriority, creates_agent: addTaskCreatesAgent ? project.creates_agent : undefined });
+    await createTask(projectId, { title: addTaskTitle, priority: addTaskPriority });
     setShowAddTask(false);
     setAddTaskTitle("");
     setAddTaskPriority("medium");
-    setAddTaskCreatesAgent(false);
     loadProject();
   };
 
@@ -328,13 +326,6 @@ export default function ProjectDetailPage() {
                 <option value="medium">medium</option>
                 <option value="low">low</option>
               </select>
-              {project.creates_agent && (
-                <label className="flex items-center gap-2 mt-2 cursor-pointer">
-                  <input type="checkbox" checked={addTaskCreatesAgent} onChange={(e) => setAddTaskCreatesAgent(e.target.checked)} />
-                  <span className="text-sm">🤖 Create agent for this task</span>
-                  <span className="text-xs text-muted">agent ID: {project.creates_agent}</span>
-                </label>
-              )}
             </div>
             <div className="modal-footer">
               <button onClick={() => setShowAddTask(false)}>Cancel</button>
