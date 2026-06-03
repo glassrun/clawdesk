@@ -41,6 +41,7 @@ export interface Project {
   created_at?: string;
   is_template?: number; // SQLite INTEGER 0/1
   template_source_id?: number | null;
+  creates_agent?: string | null;
 }
 
 export interface Task {
@@ -153,8 +154,8 @@ export async function deleteAgent(id: number) {
   return api<{ success: boolean }>(`/api/agents/${id}?force=1`, { method: 'DELETE' });
 }
 
-export async function createProject(data: { title: string; description?: string; workspace_path?: string; status?: string; is_template?: number }) {
-  return api<{ project: Project }>('/api/projects', { method: 'POST', body: JSON.stringify(data) });
+export async function createProject(data: { title: string; description?: string; workspace_path?: string; status?: string; is_template?: number; creates_agent?: string }) {
+  return api<{ project: Project; agent?: any }>('/api/projects', { method: 'POST', body: JSON.stringify(data) });
 }
 
 export async function cloneProject(id: number) {

@@ -27,7 +27,7 @@ process.on('uncaughtException', (err) => {
 
 // ===================== Schema version / Migrations =====================
 
-const CURRENT_VERSION = 9;
+const CURRENT_VERSION = 10;
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS _changelog (
@@ -230,6 +230,16 @@ function runMigrations() {
       };
       addCol('task_results', 'tools_used', 'TEXT');
     },
+    // v9: add creates_agent to projects (agent creation as a project option)
+    () => {
+      const addCol = (table, col, type) => {
+        try {
+          const existing = db.prepare(`PRAGMA table_info(${table})`).all().map(r => r.name);
+          if (!existing.includes(col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
+        } catch (e) {}
+      };
+      addCol('projects', 'creates_agent', 'TEXT');
+    },
   ];
 
   for (let v = from + 1; v <= CURRENT_VERSION; v++) {
@@ -356,16 +366,16 @@ function insertAgent(a) {
 function loadProjects()    { return db.prepare("SELECT * FROM projects WHERE deleted_at IS NULL").all(); }
 function saveProjects(data) {
   db.exec("DELETE FROM projects");
-  const ins = db.prepare(`INSERT INTO projects (id,title,description,workspace_path,status,task_total,task_done,completion_pct,created_at,deleted_at,updated_at,is_template,template_source_id,trigger_rules)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
-  for (const p of data) ins.run(p.id,p.title,p.description,p.workspace_path,p.status,p.task_total,p.task_done,p.completion_pct,p.created_at,p.deleted_at||null,p.updated_at||null,p.is_template||0,p.template_source_id||null,typeof p.trigger_rules==='string'?p.trigger_rules:(JSON.stringify(p.trigger_rules||[])));
+  const ins = db.prepare(`INSERT INTO projects (id,title,description,workspace_path,status,task_total,task_done,completion_pct,created_at,deleted_at,updated_at,is_template,template_source_id,trigger_rules,creates_agent)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+  for (const p of data) ins.run(p.id,p.title,p.description,p.workspace_path,p.status,p.task_total,p.task_done,p.completion_pct,p.created_at,p.deleted_at||null,p.updated_at||null,p.is_template||0,p.template_source_id||null,typeof p.trigger_rules==='string'?p.trigger_rules:(JSON.stringify(p.trigger_rules||[])),p.creates_agent||null);
 }
 function insertProject(p) {
   const id = nextId('projects');
   const now = new Date().toISOString();
-  db.prepare(`INSERT INTO projects (id,title,description,workspace_path,status,task_total,task_done,completion_pct,created_at,is_template,template_source_id,trigger_rules)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
-    .run(id, p.title||'', p.description||'', p.workspace_path||'', p.status||'active', 0, 0, 0, now, p.is_template?1:0, p.template_source_id||null, typeof p.trigger_rules==='string'?p.trigger_rules:JSON.stringify(p.trigger_rules||[]));
+  db.prepare(`INSERT INTO projects (id,title,description,workspace_path,status,task_total,task_done,completion_pct,created_at,is_template,template_source_id,trigger_rules,creates_agent)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(id, p.title||'', p.description||'', p.workspace_path||'', p.status||'active', 0, 0, 0, now, p.is_template?1:0, p.template_source_id||null, typeof p.trigger_rules==='string'?p.trigger_rules:JSON.stringify(p.trigger_rules||[]), p.creates_agent||null);
   return id;
 }
 

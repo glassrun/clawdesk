@@ -25,6 +25,8 @@ export default function ProjectsPage() {
   const [formDesc, setFormDesc] = useState("");
   const [formStatus, setFormStatus] = useState("active");
   const [formIsTemplate, setFormIsTemplate] = useState(0);
+  const [formCreatesAgent, setFormCreatesAgent] = useState(false);
+  const [formCreatesAgentEdit, setFormCreatesAgentEdit] = useState(false);
   const [addTab, setAddTab] = useState<"blank" | "template">("blank");
   const [menuOpen, setMenuOpen] = useState<number | null>(null);
 
@@ -51,9 +53,9 @@ export default function ProjectsPage() {
 
   const handleAdd = async () => {
     if (!formTitle.trim()) return;
-    await createProject({ title: formTitle, description: formDesc, status: formStatus, is_template: formIsTemplate || undefined });
+    await createProject({ title: formTitle, description: formDesc, status: formStatus, is_template: formIsTemplate || undefined, creates_agent: formCreatesAgent ? formTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : undefined });
     setShowAddModal(false);
-    setFormTitle(""); setFormDesc(""); setFormStatus("active"); setFormIsTemplate(0);
+    setFormTitle(""); setFormDesc(""); setFormStatus("active"); setFormIsTemplate(0); setFormCreatesAgent(false);
     refetchProjects();
   };
 
@@ -88,12 +90,13 @@ export default function ProjectsPage() {
     setFormDesc(project.description || "");
     setFormStatus(project.status || "active");
     setFormIsTemplate(project.is_template ? 1 : 0);
+    setFormCreatesAgentEdit(!!project.creates_agent);
     setShowEditModal(true);
   };
 
   const handleEditSave = async () => {
     if (!editProject) return;
-    await updateProject(editProject.id, { title: formTitle, description: formDesc, status: formStatus, is_template: formIsTemplate || undefined });
+    await updateProject(editProject.id, { title: formTitle, description: formDesc, status: formStatus, is_template: formIsTemplate || undefined, creates_agent: formCreatesAgentEdit ? formTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : null });
     setShowEditModal(false);
     refetchProjects();
   };
@@ -121,6 +124,7 @@ export default function ProjectsPage() {
                 <div className="flex items-center gap-2">
                   <h3>{p.title}</h3>
                   {p.is_template ? <span title="Template project" className="text-lg">📋</span> : null}
+                  {p.creates_agent ? <span title={`Agent: ${p.creates_agent}`} className="text-lg">🤖</span> : null}
                 </div>
                 <div className="flex gap-1">
                   <div style={{ position: "relative", overflow: "visible" }} onClick={e => e.stopPropagation()}>
@@ -175,6 +179,15 @@ export default function ProjectsPage() {
                 <input type="checkbox" checked={formIsTemplate === 1} onChange={(e) => setFormIsTemplate(e.target.checked ? 1 : 0)} />
                 <span className="text-sm">Save as template</span>
                 <span className="text-xs text-muted">📋</span>
+              </label>
+              <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                <input type="checkbox" checked={formCreatesAgentEdit} onChange={(e) => setFormCreatesAgentEdit(e.target.checked)} />
+                <span className="text-sm">🤖 Create agent for this project</span>
+              </label>
+              <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                <input type="checkbox" checked={formCreatesAgent} onChange={(e) => setFormCreatesAgent(e.target.checked)} />
+                <span className="text-sm">🤖 Create agent for this project</span>
+                <span className="text-xs text-muted">agent shares project workspace</span>
               </label>
             </div>
           ) : (

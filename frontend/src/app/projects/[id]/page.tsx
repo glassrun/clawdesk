@@ -156,6 +156,7 @@ export default function ProjectDetailPage() {
           <Link href="/projects" className="btn-sm">←</Link>
           <h1>{project.title}</h1>
           {project.is_template ? <span className="badge">📋 template</span> : null}
+          {project.creates_agent ? <span className="badge" title={`Agent: ${project.creates_agent}`}>🤖 agent</span> : null}
           <span className={`badge ${project.status === "active" ? "status-in_progress" : project.status === "completed" ? "status-done" : "status-failed"}`}>
             {project.status}
           </span>
@@ -184,6 +185,7 @@ export default function ProjectDetailPage() {
 
       {project.description && <p className="text-muted mt-2">{project.description}</p>}
       {project.workspace_path && <p className="text-xs text-soft mt-1">📁 {project.workspace_path}</p>}
+      {project.creates_agent && <p className="text-xs text-soft mt-1">🤖 Agent: <code>{project.creates_agent}</code></p>}
 
       {/* Progress bar */}
       <div className="card mt-4">
