@@ -15,7 +15,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     }) });
   });
 
-  router.post('/', async (req, res) => {
+  router.post('/', (req, res) => {
     const { title, description, workspace_path, status, is_template, creates_agent } = req.body;
     if (!title) return res.status(400).json({ error: 'title required' });
     if (title.length > 200) return res.status(400).json({ error: 'title too long (max 200 chars)' });
@@ -26,37 +26,12 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
       finalWorkspace = path.join(process.env.HOME, `clawdesk-projects/${slug}-${Date.now()}`);
     }
     fs.mkdirSync(finalWorkspace, { recursive: true, mode: 0o755 });
-
-    let agentInfo = null;
-    if (creates_agent) {
-      const agentId = creates_agent;
-      const { createOpenClawAgent } = require('../services/executor');
-      try {
-        const oc = await createOpenClawAgent(agentId, title, finalWorkspace, { vibe: description || 'helpful and focused' });
-        const agents = db.loadAgents();
-        if (!agents.find(a => a.openclaw_agent_id === agentId)) {
-          agents.push({
-            id: nextId('agents'), openclaw_agent_id: agentId,
-            name: title,
-            status: 'idle',
-            budget_limit: 0, budget_spent: 0,
-            heartbeat_enabled: 1, heartbeat_interval: 30,
-            last_heartbeat: null, created_at: new Date().toISOString()
-          });
-          db.saveAgents(agents);
-        }
-        agentInfo = { agent_id: agentId, workspace: finalWorkspace };
-      } catch (e) {
-        console.log(`[projects] agent creation failed: ${e.message}`);
-      }
-    }
-
     const projects = db.loadProjects();
     const p = { id: nextId('projects'), title, description: description || '', workspace_path: finalWorkspace, status: status || 'active', is_template: is_template ? 1 : 0, template_source_id: null, creates_agent: creates_agent || null, created_at: new Date().toISOString() };
     projects.push(p);
     db.saveProjects(projects);
     broadcastSSE('projects', { action: 'created', project: p });
-    res.status(201).json({ project: p, agent: agentInfo });
+    res.status(201).json({ project: p });
   });
 
   router.get('/:id', (req, res) => {
@@ -236,6 +211,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
 
   router.post('/:id/tasks', (req, res) => {
     if (!db.loadProjects().find(p => p.id === +req.params.id)) return res.status(404).json({ error: 'project not found' });
+    const project = db.loadProjects().find(p => p.id === +req.params.id);
     const { assigned_agent_id, title, description, status, dependency_ids, creates_agent, created_by_agent_id, priority, repeat } = req.body;
     if (!title) return res.status(400).json({ error: 'title required' });
     if (title.length > 500) return res.status(400).json({ error: 'title too long (max 500 chars)' });
@@ -270,7 +246,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
       description: description || '',
       status: status || 'pending',
       dependency_ids: depIds ? JSON.stringify(depIds) : null,
-      creates_agent: creates_agent || null,
+      creates_agent: (creates_agent && project.creates_agent) ? creates_agent : null,
       created_by_agent_id: toNum(created_by_agent_id),
       priority: priority || 'medium',
       created_at: new Date().toISOString(),

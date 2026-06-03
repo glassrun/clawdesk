@@ -215,9 +215,14 @@ Task: ${task.title}`;
   message += `\n\nIMPORTANT: When you have completed the task successfully, you MUST print this exact string on its own line at the very end of your response: TASK_SUCCESS_CONFIRMED`;
   message += `\nDo NOT print this string if the task is not fully complete, if you encountered an error, or if you are asking for clarification. Only print it when the work is truly done.`;
 
+  // ── Agent creation gate: only if project has creates_agent enabled ─────
+  const projects = db.loadProjects();
+  const project = projects.find(p => p.id === task.project_id);
+  const projectAllowsAgentCreation = project?.creates_agent;
+
   let createdAgentInfo = null;
 
-  if (task.creates_agent) {
+  if (task.creates_agent && projectAllowsAgentCreation) {
     try {
       const oc = await createOpenClawAgent(task.creates_agent, task.creates_agent, null, {});
       const agents = db.loadAgents();
@@ -263,6 +268,9 @@ Task: ${task.title}`;
     } catch (e) {
       createdAgentInfo = { agent_id: task.creates_agent, error: e.message };
     }
+  } else if (task.creates_agent && !projectAllowsAgentCreation) {
+    // Project does not allow agent creation — strip the flag from the task
+    console.log(`[Executor] Task #${task.id} has creates_agent but project #${task.project_id} does not allow it — ignoring`);
   }
 
   const startTime = Date.now();
