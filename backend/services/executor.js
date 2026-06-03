@@ -194,9 +194,10 @@ async function executeTask(agent, task, overrideRetry) {
     message += `\nProject: ${project.title} - ${project.description}`;
   }
   if (project?.creates_agent) {
+    const autoAgentId = project.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     message += `\n\n--- AGENT AUTO-CREATION ENABLED ---\n`;
-    message += `This project has agent auto-creation enabled. You MUST create the agent \`${project.creates_agent}\` via HTTP POST: ${BASE_URL}/api/agents`;
-    message += `\nBody (JSON): { "job_title": "${project.creates_agent}", "job_description": "Agent for project: ${project.title}" }`;
+    message += `This project has agent auto-creation enabled. You MUST create an agent for this project via HTTP POST: ${BASE_URL}/api/agents`;
+    message += `\nBody (JSON): { "job_title": "${autoAgentId}", "job_description": "Agent for project: ${project.title}" }`;
     message += `\nThe created agent will be picked up automatically by the scheduler. Do NOT proceed with this task until the agent creation call returns successfully.`;
     message += `\n--- END AGENT AUTO-CREATION ---\n`;
   }

@@ -79,7 +79,7 @@ function processTriggerRules(projectId, completedTaskId) {
       priority: rule.then_create_task?.priority || 'medium',
       assigned_agent_id: null,
       dependency_ids: null,
-      creates_agent: null, // controlled at project level, not task level
+      creates_agent: 0, // controlled at project level (v11+: boolean flag)
       created_by_agent_id: null,
       created_at: new Date().toISOString(),
       scheduled_at: rule.then_create_task?.scheduled_at || null,

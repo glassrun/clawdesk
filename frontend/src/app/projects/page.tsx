@@ -53,7 +53,7 @@ export default function ProjectsPage() {
 
   const handleAdd = async () => {
     if (!formTitle.trim()) return;
-    await createProject({ title: formTitle, description: formDesc, status: formStatus, is_template: formIsTemplate || undefined, creates_agent: formCreatesAgent ? formTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : undefined });
+    await createProject({ title: formTitle, description: formDesc, status: formStatus, is_template: formIsTemplate || undefined, creates_agent: formCreatesAgent ? 1 : undefined });
     setShowAddModal(false);
     setFormTitle(""); setFormDesc(""); setFormStatus("active"); setFormIsTemplate(0); setFormCreatesAgent(false);
     refetchProjects();
@@ -96,7 +96,7 @@ export default function ProjectsPage() {
 
   const handleEditSave = async () => {
     if (!editProject) return;
-    await updateProject(editProject.id, { title: formTitle, description: formDesc, status: formStatus, is_template: formIsTemplate || undefined, creates_agent: formCreatesAgentEdit ? formTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : null });
+    await updateProject(editProject.id, { title: formTitle, description: formDesc, status: formStatus, is_template: formIsTemplate || undefined, creates_agent: formCreatesAgentEdit ? 1 : 0 });
     setShowEditModal(false);
     refetchProjects();
   };
@@ -124,7 +124,7 @@ export default function ProjectsPage() {
                 <div className="flex items-center gap-2">
                   <h3>{p.title}</h3>
                   {p.is_template ? <span title="Template project" className="text-lg">📋</span> : null}
-                  {p.creates_agent ? <span title={`Agent: ${p.creates_agent}`} className="text-lg">🤖</span> : null}
+                  {p.creates_agent ? <span title="Agent auto-creation enabled" className="text-lg">🤖</span> : null}
                 </div>
                 <div className="flex gap-1">
                   <div style={{ position: "relative", overflow: "visible" }} onClick={e => e.stopPropagation()}>

@@ -27,7 +27,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     }
     fs.mkdirSync(finalWorkspace, { recursive: true, mode: 0o755 });
     const projects = db.loadProjects();
-    const p = { id: nextId('projects'), title, description: description || '', workspace_path: finalWorkspace, status: status || 'active', is_template: is_template ? 1 : 0, template_source_id: null, creates_agent: creates_agent || null, created_at: new Date().toISOString() };
+    const p = { id: nextId('projects'), title, description: description || '', workspace_path: finalWorkspace, status: status || 'active', is_template: is_template ? 1 : 0, template_source_id: null, creates_agent: creates_agent ? 1 : 0, created_at: new Date().toISOString() };
     projects.push(p);
     db.saveProjects(projects);
     broadcastSSE('projects', { action: 'created', project: p });
@@ -103,7 +103,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
     if (!p) return res.status(404).json({ error: 'not found' });
     const { title, description, workspace_path, status, is_template, creates_agent } = req.body;
     if (workspace_path === '') return res.status(400).json({ error: 'workspace_path cannot be empty string (use null or omit to keep existing)' });
-    Object.assign(p, { title: title ?? p.title, description: description ?? p.description, workspace_path: workspace_path ?? p.workspace_path, status: status ?? p.status, is_template: is_template !== undefined ? (is_template ? 1 : 0) : p.is_template, creates_agent: creates_agent !== undefined ? (creates_agent || null) : p.creates_agent });
+    Object.assign(p, { title: title ?? p.title, description: description ?? p.description, workspace_path: workspace_path ?? p.workspace_path, status: status ?? p.status, is_template: is_template !== undefined ? (is_template ? 1 : 0) : p.is_template, creates_agent: creates_agent !== undefined ? (creates_agent ? 1 : 0) : p.creates_agent });
     db.saveProjects(projects);
     broadcastSSE('projects', { action: 'updated', project: p });
     res.json({ project: p });
@@ -142,7 +142,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
       template_source_id: source.id,
       created_at: now,
       workspace_path: ws,
-      creates_agent: null,
+      creates_agent: 0,
     };
     projects.push(newProject);
     db.saveProjects(projects);

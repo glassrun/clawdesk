@@ -27,7 +27,7 @@ process.on('uncaughtException', (err) => {
 
 // ===================== Schema version / Migrations =====================
 
-const CURRENT_VERSION = 10;
+const CURRENT_VERSION = 11;
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS _changelog (
@@ -229,7 +229,7 @@ function runMigrations() {
       };
       addCol('task_results', 'tools_used', 'TEXT');
     },
-    // v9: add creates_agent to projects (agent creation as a project option)
+    // v11: change creates_agent TEXT → INTEGER (boolean flag)
     () => {
       const addCol = (table, col, type) => {
         try {
@@ -237,7 +237,13 @@ function runMigrations() {
           if (!existing.includes(col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
         } catch (e) {}
       };
-      addCol('projects', 'creates_agent', 'TEXT');
+      addCol('projects', 'creates_agent', 'INTEGER DEFAULT 0');
+      // Migrate existing TEXT values to boolean
+      const rows = db.prepare("SELECT id, creates_agent FROM projects WHERE creates_agent IS NOT NULL AND creates_agent != '' AND creates_agent != '0'").all();
+      const upd = db.prepare("UPDATE projects SET creates_agent = 1 WHERE id = ?");
+      for (const r of rows) upd.run(r.id);
+      const nullUpd = db.prepare("UPDATE projects SET creates_agent = 0 WHERE creates_agent IS NULL OR creates_agent = '' OR creates_agent = '0'");
+      nullUpd.run();
     },
   ];
 

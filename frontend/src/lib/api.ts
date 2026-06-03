@@ -41,7 +41,7 @@ export interface Project {
   created_at?: string;
   is_template?: number; // SQLite INTEGER 0/1
   template_source_id?: number | null;
-  creates_agent?: string | null;
+  creates_agent?: number; // 0 or 1 (agent auto-creation enabled)
 }
 
 export interface Task {
@@ -154,7 +154,7 @@ export async function deleteAgent(id: number) {
   return api<{ success: boolean }>(`/api/agents/${id}?force=1`, { method: 'DELETE' });
 }
 
-export async function createProject(data: { title: string; description?: string; workspace_path?: string; status?: string; is_template?: number; creates_agent?: string }) {
+export async function createProject(data: { title: string; description?: string; workspace_path?: string; status?: string; is_template?: number; creates_agent?: number }) {
   return api<{ project: Project; agent?: any }>('/api/projects', { method: 'POST', body: JSON.stringify(data) });
 }
 
