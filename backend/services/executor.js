@@ -193,6 +193,12 @@ async function executeTask(agent, task, overrideRetry) {
   if (project) {
     message += `\nProject: ${project.title} - ${project.description}`;
   }
+  if (project?.creates_agent) {
+    message += `\n\n--- AGENT AUTO-CREATION ENABLED ---\n`;
+    message += `This project has agent auto-creation enabled. The agent ID \`${project.creates_agent}\` will be automatically created when this task runs (if it does not already exist).`;
+    message += `\nYou do not need to create this agent manually. If you need to create additional agents beyond \`${project.creates_agent}\`, use HTTP POST: ${BASE_URL}/api/agents`;
+    message += `\n--- END AGENT AUTO-CREATION ---\n`;
+  }
   message += `\n\n--- TASK DELEGATION (CRITICAL) ---`;
   message += `\nBreak every non-trivial task into MULTIPLE smaller tasks with dependency chains. Do NOT attempt the full task yourself in one go — always decompose it.`;
   message += `\nRule: if a task has more than one distinct step or area of work, create a SEPARATE task for each step and link them with dependency_ids.`;
