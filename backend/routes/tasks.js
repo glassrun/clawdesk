@@ -139,7 +139,7 @@ module.exports = function(router, { db, broadcastSSE, broadcastTaskUpdate, setTa
     const taskId = +req.params.id;
     const t = tasks.find(x => x.id === taskId);
     if (!t) return res.status(404).json({ error: 'not found' });
-    const { assigned_agent_id, title, description, status, dependency_ids, creates_agent, created_by_agent_id, priority, repeat, scheduled_at, requires_approval } = req.body;
+    const { assigned_agent_id, title, description, status, dependency_ids, created_by_agent_id, priority, repeat, scheduled_at, requires_approval } = req.body;
     const resolveDepIds = (v) => {
       if (v === '' || v === null || v === undefined) return null;
       if (Array.isArray(v)) return v.map(x => +x).filter(x => x);
@@ -180,7 +180,6 @@ module.exports = function(router, { db, broadcastSSE, broadcastTaskUpdate, setTa
       description: description ?? t.description,
       status: status ?? t.status,
       dependency_ids: dependency_ids !== undefined ? (newDepIds ? JSON.stringify(newDepIds) : null) : t.dependency_ids,
-      creates_agent: creates_agent !== undefined ? creates_agent : t.creates_agent,
       created_by_agent_id: created_by_agent_id !== undefined ? created_by_agent_id : t.created_by_agent_id,
       priority: priority ?? t.priority,
       repeat: repeat !== undefined ? repeat : t.repeat,
@@ -342,7 +341,6 @@ module.exports = function(router, { db, broadcastSSE, broadcastTaskUpdate, setTa
       title: req.body.title || (orig.title + ' (copy)'),
       description: orig.description, status: 'pending',
       dependency_ids: safeDepIds(orig.dependency_ids),
-      creates_agent: orig.creates_agent,
       created_by_agent_id: orig.created_by_agent_id,
       priority: orig.priority,
       created_at: new Date().toISOString(), completed_at: null

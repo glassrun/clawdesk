@@ -215,62 +215,63 @@ Task: ${task.title}`;
   message += `\n\nIMPORTANT: When you have completed the task successfully, you MUST print this exact string on its own line at the very end of your response: TASK_SUCCESS_CONFIRMED`;
   message += `\nDo NOT print this string if the task is not fully complete, if you encountered an error, or if you are asking for clarification. Only print it when the work is truly done.`;
 
-  // ── Agent creation gate: only if project has creates_agent enabled ─────
+  // ── Agent creation: auto-create agent when task runs on a project that has creates_agent ─────
   const projects = db.loadProjects();
   const project = projects.find(p => p.id === task.project_id);
-  const projectAllowsAgentCreation = project?.creates_agent;
+  const projectAgentId = project?.creates_agent;
 
   let createdAgentInfo = null;
 
-  if (task.creates_agent && projectAllowsAgentCreation) {
+  if (projectAgentId) {
     try {
-      const oc = await createOpenClawAgent(task.creates_agent, task.creates_agent, null, {});
       const agents = db.loadAgents();
-      if (!agents.find(a => a.openclaw_agent_id === task.creates_agent)) {
+      const existingAgent = agents.find(a => a.openclaw_agent_id === projectAgentId);
+      if (!existingAgent) {
+        const oc = await createOpenClawAgent(projectAgentId, projectAgentId, null, {});
         agents.push({
-          id: nextId('agents'), openclaw_agent_id: task.creates_agent,
-          name: task.creates_agent.split('-').map(w => w[0].toUpperCase() + w.slice(1)).join(' '),
+          id: nextId('agents'), openclaw_agent_id: projectAgentId,
+          name: projectAgentId.split('-').map(w => w[0].toUpperCase() + w.slice(1)).join(' '),
           status: 'active',
           budget_limit: 0, budget_spent: 0,
           heartbeat_enabled: 1, heartbeat_interval: 1,
           last_heartbeat: null, created_at: new Date().toISOString()
         });
         db.saveAgents(agents);
-      }
-      createdAgentInfo = { agent_id: task.creates_agent, workspace: oc.workspace };
-      message += `\n[Created agent: ${task.creates_agent}]`;
+        createdAgentInfo = { agent_id: projectAgentId, workspace: oc.workspace, fresh: true };
+        message += `\n[Created agent: ${projectAgentId}]`;
 
-      try {
-        const agents = db.loadAgents();
-        const newAgent = agents.find(a => a.openclaw_agent_id === task.creates_agent);
-        if (newAgent) {
-          const tasks = db.loadTasks();
-          tasks.push({
-            id: nextId('tasks'),
-            project_id: task.project_id,
-            assigned_agent_id: newAgent.id,
-            title: `Onboarding: ${task.creates_agent}`,
-            description: `Welcome! You are the newly created agent: ${task.creates_agent}. Review the project context and pick up tasks as needed.`,
-            status: 'pending',
-            priority: 'medium',
-            dependency_ids: JSON.stringify([task.id]),
-            creates_agent: null,
-            created_by_agent_id: agent.id,
-            created_at: new Date().toISOString(),
-            completed_at: null
-          });
-          db.saveTasks(tasks);
-          console.log(`[AutoAssign] Created onboarding task for ${task.creates_agent}`);
+        // Create onboarding task for the new agent, dependent on this task completing
+        try {
+          const updatedAgents = db.loadAgents();
+          const newAgent = updatedAgents.find(a => a.openclaw_agent_id === projectAgentId);
+          if (newAgent) {
+            const tasks = db.loadTasks();
+            tasks.push({
+              id: nextId('tasks'),
+              project_id: task.project_id,
+              assigned_agent_id: newAgent.id,
+              title: `Onboarding: ${projectAgentId}`,
+              description: `Welcome! You are the newly created agent: ${projectAgentId}. Review the project context and pick up tasks as needed.`,
+              status: 'pending',
+              priority: 'medium',
+              dependency_ids: JSON.stringify([task.id]),
+              created_by_agent_id: agent.id,
+              created_at: new Date().toISOString(),
+              completed_at: null
+            });
+            db.saveTasks(tasks);
+            console.log(`[AutoAssign] Created onboarding task for ${projectAgentId}`);
+          }
+        } catch(e) {
+          console.log(`[AutoAssign] Failed to create onboarding task: ${e.message}`);
         }
-      } catch(e) {
-        console.log(`[AutoAssign] Failed to create onboarding task: ${e.message}`);
+      } else {
+        createdAgentInfo = { agent_id: projectAgentId, workspace: null, fresh: false };
+        message += `\n[Agent ${projectAgentId} already exists]`;
       }
     } catch (e) {
-      createdAgentInfo = { agent_id: task.creates_agent, error: e.message };
+      console.log(`[Executor] Agent creation failed: ${e.message}`);
     }
-  } else if (task.creates_agent && !projectAllowsAgentCreation) {
-    // Project does not allow agent creation — strip the flag from the task
-    console.log(`[Executor] Task #${task.id} has creates_agent but project #${task.project_id} does not allow it — ignoring`);
   }
 
   const startTime = Date.now();

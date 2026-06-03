@@ -212,7 +212,7 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
   router.post('/:id/tasks', (req, res) => {
     if (!db.loadProjects().find(p => p.id === +req.params.id)) return res.status(404).json({ error: 'project not found' });
     const project = db.loadProjects().find(p => p.id === +req.params.id);
-    const { assigned_agent_id, title, description, status, dependency_ids, creates_agent, created_by_agent_id, priority, repeat } = req.body;
+    const { assigned_agent_id, title, description, status, dependency_ids, created_by_agent_id, priority, repeat } = req.body;
     if (!title) return res.status(400).json({ error: 'title required' });
     if (title.length > 500) return res.status(400).json({ error: 'title too long (max 500 chars)' });
     if (priority && !['low', 'medium', 'high'].includes(priority)) return res.status(400).json({ error: 'priority must be low, medium, or high' });
@@ -246,7 +246,6 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
       description: description || '',
       status: status || 'pending',
       dependency_ids: depIds ? JSON.stringify(depIds) : null,
-      creates_agent: (creates_agent && project.creates_agent) ? creates_agent : null,
       created_by_agent_id: toNum(created_by_agent_id),
       priority: priority || 'medium',
       created_at: new Date().toISOString(),
