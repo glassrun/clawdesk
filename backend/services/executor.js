@@ -211,7 +211,6 @@ async function executeTask(agent, task, overrideRetry) {
   message += `\nCRITICAL: dependency_ids is how you chain tasks. Pass the ID of any task that must complete BEFORE this new task runs. The scheduler blocks execution until ALL dependency_ids tasks are done. For example: Step 1 task (no deps) → Step 2 task { dependency_ids: [step1_id] } → Step 3 task { dependency_ids: [step2_id] }. Without dependencies, tasks run in random order and your pipeline breaks.`;
   message += `\nTasks enter a pending queue and are picked up asynchronously — do not expect immediate execution.`;
   message += `\nFor every task creation API call, include the URL, body, and full response (success or error) in your output so it can be verified.`;
-  message += `\nYou can create new agents via HTTP POST: ${BASE_URL}/api/agents`;
   message += `\n`;
   message += `\n--- TASK BOARD ---`;
   message += `\nQuery the project task board to coordinate: GET ${BASE_URL}/api/projects/${task.project_id}/tasks`;
