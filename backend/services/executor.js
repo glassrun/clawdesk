@@ -195,8 +195,9 @@ async function executeTask(agent, task, overrideRetry) {
   }
   if (project?.creates_agent) {
     message += `\n\n--- AGENT AUTO-CREATION ENABLED ---\n`;
-    message += `This project has agent auto-creation enabled. The agent ID \`${project.creates_agent}\` will be automatically created when this task runs (if it does not already exist).`;
-    message += `\nYou do not need to create this agent manually. If you need to create additional agents beyond \`${project.creates_agent}\`, use HTTP POST: ${BASE_URL}/api/agents`;
+    message += `This project has agent auto-creation enabled. You MUST create the agent \`${project.creates_agent}\` via HTTP POST: ${BASE_URL}/api/agents`;
+    message += `\nBody (JSON): { "job_title": "${project.creates_agent}", "job_description": "Agent for project: ${project.title}" }`;
+    message += `\nThe created agent will be picked up automatically by the scheduler. Do NOT proceed with this task until the agent creation call returns successfully.`;
     message += `\n--- END AGENT AUTO-CREATION ---\n`;
   }
   message += `\n\n--- TASK DELEGATION (CRITICAL) ---`;
@@ -220,65 +221,6 @@ Task: ${task.title}`;
   if (task.description) message += `\n${task.description}`;
   message += `\n\nIMPORTANT: When you have completed the task successfully, you MUST print this exact string on its own line at the very end of your response: TASK_SUCCESS_CONFIRMED`;
   message += `\nDo NOT print this string if the task is not fully complete, if you encountered an error, or if you are asking for clarification. Only print it when the work is truly done.`;
-
-  // ── Agent creation: auto-create agent when task runs on a project that has creates_agent ─────
-  const projects = db.loadProjects();
-  const project = projects.find(p => p.id === task.project_id);
-  const projectAgentId = project?.creates_agent;
-
-  let createdAgentInfo = null;
-
-  if (projectAgentId) {
-    try {
-      const agents = db.loadAgents();
-      const existingAgent = agents.find(a => a.openclaw_agent_id === projectAgentId);
-      if (!existingAgent) {
-        const oc = await createOpenClawAgent(projectAgentId, projectAgentId, null, {});
-        agents.push({
-          id: nextId('agents'), openclaw_agent_id: projectAgentId,
-          name: projectAgentId.split('-').map(w => w[0].toUpperCase() + w.slice(1)).join(' '),
-          status: 'active',
-          budget_limit: 0, budget_spent: 0,
-          heartbeat_enabled: 1, heartbeat_interval: 1,
-          last_heartbeat: null, created_at: new Date().toISOString()
-        });
-        db.saveAgents(agents);
-        createdAgentInfo = { agent_id: projectAgentId, workspace: oc.workspace, fresh: true };
-        message += `\n[Created agent: ${projectAgentId}]`;
-
-        // Create onboarding task for the new agent, dependent on this task completing
-        try {
-          const updatedAgents = db.loadAgents();
-          const newAgent = updatedAgents.find(a => a.openclaw_agent_id === projectAgentId);
-          if (newAgent) {
-            const tasks = db.loadTasks();
-            tasks.push({
-              id: nextId('tasks'),
-              project_id: task.project_id,
-              assigned_agent_id: newAgent.id,
-              title: `Onboarding: ${projectAgentId}`,
-              description: `Welcome! You are the newly created agent: ${projectAgentId}. Review the project context and pick up tasks as needed.`,
-              status: 'pending',
-              priority: 'medium',
-              dependency_ids: JSON.stringify([task.id]),
-              created_by_agent_id: agent.id,
-              created_at: new Date().toISOString(),
-              completed_at: null
-            });
-            db.saveTasks(tasks);
-            console.log(`[AutoAssign] Created onboarding task for ${projectAgentId}`);
-          }
-        } catch(e) {
-          console.log(`[AutoAssign] Failed to create onboarding task: ${e.message}`);
-        }
-      } else {
-        createdAgentInfo = { agent_id: projectAgentId, workspace: null, fresh: false };
-        message += `\n[Agent ${projectAgentId} already exists]`;
-      }
-    } catch (e) {
-      console.log(`[Executor] Agent creation failed: ${e.message}`);
-    }
-  }
 
   const startTime = Date.now();
   let toolsUsed = [
