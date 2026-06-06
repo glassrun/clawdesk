@@ -317,7 +317,7 @@ app.get('/api/dashboard', (req, res) => {
     projects: projects.map(p => {
       const pt = tasks.filter(t => t.project_id === p.id);
       const done = pt.filter(t => t.status === 'done').length;
-      return { ...p, task_total: pt.length, task_done: done, completion_pct: pt.length > 0 ? Math.round(done / pt.length * 100) : 0 };
+      return { ...p, tasks_total: pt.length, tasks_done: done, completion_pct: pt.length > 0 ? Math.round(done / pt.length * 100) : 0 };
     }),
     recent_heartbeats: recentHbs.map(h => {
       const a = agents.find(x => x.id === h.agent_id);
