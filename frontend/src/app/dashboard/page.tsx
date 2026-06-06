@@ -309,7 +309,7 @@ export default function DashboardPage() {
           {/* Task Status */}
           <div className="panel">
             <div className="panel-header">
-              <h2>📋 Task Status</h2>
+              <h2>📋 Tasks</h2>
             </div>
             {(() => {
               const byStatus = dash?.agents?.reduce((acc: any, a: any) => {
