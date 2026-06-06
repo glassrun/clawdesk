@@ -279,7 +279,7 @@ export default function DashboardPage() {
           {/* Projects with horizontal completion bars */}
           <div className="panel">
             <div className="panel-header">
-              <h2>📁 Projects <span className="text-muted text-sm font-normal">({dash?.projects?.length ?? 0})</span></h2>
+              <h2>📁 Projects</h2>
             </div>
             <div className="overflow-y-auto" style={{ maxHeight: 320 }}>
               {dash?.projects?.length === 0 && (
