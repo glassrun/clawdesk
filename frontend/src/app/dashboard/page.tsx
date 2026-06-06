@@ -324,31 +324,25 @@ export default function DashboardPage() {
                 return acc;
               }, { pending: 0, in_progress: 0, done: 0, failed: 0 });
               const sTotal = (byStatus?.pending || 0) + (byStatus?.in_progress || 0) + (byStatus?.done || 0) + (byStatus?.failed || 0);
-              const pct = (n: number) => sTotal > 0 ? `${Math.round((n / sTotal) * 100)}%` : '0%';
+              const maxVal = Math.max(sTotal, 1);
+              const statusRows = [
+                { label: 'Pending', count: byStatus?.pending ?? 0, color: 'var(--text-soft)' },
+                { label: 'In Progress', count: byStatus?.in_progress ?? 0, color: 'var(--warning)' },
+                { label: 'Done', count: byStatus?.done ?? 0, color: 'var(--success)' },
+                { label: 'Failed', count: byStatus?.failed ?? 0, color: 'var(--danger)' },
+              ];
               return (
-                <>
-                  <div className="task-bar-chart">
-                    {byStatus?.pending > 0 && (
-                      <div className="task-bar-segment pending" style={{ flex: byStatus.pending }} title={`Pending: ${byStatus.pending}`}>{pct(byStatus.pending)}</div>
-                    )}
-                    {byStatus?.in_progress > 0 && (
-                      <div className="task-bar-segment in_progress" style={{ flex: byStatus.in_progress }} title={`In Progress: ${byStatus.in_progress}`}>{pct(byStatus.in_progress)}</div>
-                    )}
-                    {byStatus?.done > 0 && (
-                      <div className="task-bar-segment done" style={{ flex: byStatus.done }} title={`Done: ${byStatus.done}`}>{pct(byStatus.done)}</div>
-                    )}
-                    {byStatus?.failed > 0 && (
-                      <div className="task-bar-segment failed" style={{ flex: byStatus.failed }} title={`Failed: ${byStatus.failed}`}>{pct(byStatus.failed)}</div>
-                    )}
-                    {sTotal === 0 && <div className="task-bar-segment" style={{ flex: 1, background: 'var(--bg-hover)' }} />}
-                  </div>
-                  <div className="task-bar-legend">
-                    <div className="legend-item"><div className="legend-dot" style={{background:'var(--text-soft)'}}/>Pending {byStatus?.pending ?? 0}</div>
-                    <div className="legend-item"><div className="legend-dot" style={{background:'var(--warning)'}}/>In Progress {byStatus?.in_progress ?? 0}</div>
-                    <div className="legend-item"><div className="legend-dot" style={{background:'var(--success)'}}/>Done {byStatus?.done ?? 0}</div>
-                    <div className="legend-item"><div className="legend-dot" style={{background:'var(--danger)'}}/>Failed {byStatus?.failed ?? 0}</div>
-                  </div>
-                </>
+                <div className="overflow-y-auto" style={{ maxHeight: 280 }}>
+                  {statusRows.map(row => (
+                    <div key={row.label} className="throughput-row">
+                      <div className="throughput-label">{row.label}</div>
+                      <div className="throughput-track">
+                        <div className="throughput-done-fill" style={{ width: `${(row.count / maxVal) * 100}%`, background: row.color }} />
+                      </div>
+                      <div className="throughput-count">{row.count}</div>
+                    </div>
+                  ))}
+                </div>
               );
             })()}
           </div>
