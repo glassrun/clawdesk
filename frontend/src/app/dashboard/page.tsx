@@ -248,7 +248,7 @@ export default function DashboardPage() {
         {/* Column 1: Agent-focused */}
         <div className="flex flex-col gap-5">
           {/* Agent Throughput */}
-          <div className="panel mt-4">
+          <div className="panel">
             <div className="panel-header">
               <h2>⚡ Agent Throughput</h2>
             </div>
@@ -281,7 +281,7 @@ export default function DashboardPage() {
  {/* Column 2: Projects + Completion */}
         <div className="flex flex-col gap-5">
           {/* Projects with inline completion bars */}
-          <div className="panel mt-4">
+          <div className="panel">
             <div className="panel-header">
               <h2>📁 Projects <span className="text-muted text-sm font-normal">({dash?.projects?.length ?? 0})</span></h2>
             </div>
@@ -327,7 +327,7 @@ export default function DashboardPage() {
         {/* Column 3: Task Status */}
         <div className="flex flex-col gap-5">
           {/* Task Status */}
-          <div className="panel mt-4">
+          <div className="panel">
             <div className="panel-header">
               <h2>📋 Task Status</h2>
             </div>
@@ -373,7 +373,7 @@ export default function DashboardPage() {
         {/* Column 4: Live Activity */}
         <div className="flex flex-col gap-5">
           {/* Live Activity */}
-          <div className="panel mt-4">
+          <div className="panel">
             <div className="panel-header">
               <h2>📡 Live <span className="flex items-center gap-1 text-sm font-normal text-green"><span className="live-dot" />Live</span></h2>
             </div>
