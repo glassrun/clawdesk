@@ -276,60 +276,46 @@ export default function DashboardPage() {
 
         </div>
 
-        {/* Column 2: Project-focused */}
+ {/* Column 2: Projects + Completion */}
         <div className="flex flex-col gap-5">
-          {/* Project Completion */}
-          {(dash?.projects ?? []).length > 0 ? (
-            <div className="chart-card mt-4">
-              <div className="chart-title">Project Completion</div>
-              <div className="completion-bars">
-                {dash?.projects?.map((p: any) => {
-                  const pct = p.completion_pct ?? 0;
-                  const color = pct >= 80 ? 'var(--success)' : pct >= 50 ? 'var(--warning)' : 'var(--danger)';
-                  return (
-                    <div key={p.id} className="completion-row">
-                      <div className="completion-label" title={p.title}>{p.title}</div>
-                      <div className="completion-track">
-                        <div className="completion-fill" style={{ width: `${pct}%`, background: color }} />
-                      </div>
-                      <div className="completion-pct" style={{ color }}>{pct}%</div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : (
-            <div className="chart-card">
-              <div className="chart-title">Project Completion</div>
-              <div className="empty-state text-sm">No projects yet</div>
-            </div>
-          )}
-
-          {/* Projects */}
+          {/* Projects with inline completion bars */}
           <div className="panel mt-4">
             <div className="panel-header">
               <h2>📁 Projects <span className="text-muted text-sm font-normal">({dash?.projects?.length ?? 0})</span></h2>
             </div>
-            <div className="table-wrap overflow-y-auto" style={{ maxHeight: 280, minWidth: 0 }}>
+            <div className="table-wrap overflow-y-auto" style={{ maxHeight: 320, minWidth: 0 }}>
               <table>
                 <thead>
                   <tr>
                     <th>Title</th>
-                    <th>Tasks</th>
-                    <th>Done</th>
+                    <th style={{ width: 100 }}>Completion</th>
+                    <th style={{ width: 60 }}>Tasks</th>
+                    <th style={{ width: 60 }}>Done</th>
                   </tr>
                 </thead>
                 <tbody>
                   {dash?.projects?.length === 0 && (
-                    <tr><td colSpan={3} className="empty-state">No projects yet</td></tr>
+                    <tr><td colSpan={4} className="empty-state">No projects yet</td></tr>
                   )}
-                  {dash?.projects?.map((p: any) => (
-                    <tr key={p.id}>
-                      <td className="font-medium truncate" style={{ maxWidth: 120 }} title={p.title}>{p.title}</td>
-                      <td className="text-center text-sm">{p.tasks_total ?? 0}</td>
-                      <td className="text-center text-green text-sm">{p.tasks_done ?? 0}</td>
-                    </tr>
-                  ))}
+                  {dash?.projects?.map((p: any) => {
+                    const pct = p.completion_pct ?? 0;
+                    const color = pct >= 80 ? 'var(--success)' : pct >= 50 ? 'var(--warning)' : 'var(--danger)';
+                    return (
+                      <tr key={p.id}>
+                        <td className="font-medium truncate" style={{ maxWidth: 140 }} title={p.title}>{p.title}</td>
+                        <td>
+                          <div className="flex items-center gap-2">
+                            <div className="completion-track" style={{ flex: 1, height: 6 }}>
+                              <div className="completion-fill" style={{ width: `${pct}%`, background: color }} />
+                            </div>
+                            <span className="text-xs" style={{ color, minWidth: 32, textAlign: 'right' }}>{pct}%</span>
+                          </div>
+                        </td>
+                        <td className="text-center text-sm text-muted">{p.tasks_total ?? 0}</td>
+                        <td className="text-center text-sm text-green">{p.tasks_done ?? 0}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
