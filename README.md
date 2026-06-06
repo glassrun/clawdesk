@@ -1,6 +1,8 @@
 # ClawDesk — AI Agent Orchestration Platform
 
-![ClawDesk](docs/screenshot.png)
+![ClawDesk](docs/lobsters_working_desk.png)
+
+![Screenshot](docs/screenshot.png)
 
 Manage your OpenClaw agent teams from a single dashboard. Define projects, assign tasks, track progress, and let agents work autonomously on heartbeats. Works on desktop and mobile.
 
