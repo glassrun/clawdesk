@@ -252,24 +252,20 @@ export default function DashboardPage() {
             <div className="panel-header">
               <h2>⚡ Agent Throughput</h2>
             </div>
-            <div className="throughput-bars">
+            <div className="overflow-y-auto" style={{ maxHeight: 320 }}>
               {dash?.agents?.length === 0 && <div className="empty-state text-sm">No agents yet</div>}
               {(dash?.agents ?? []).map((a: any) => {
                 const done = a.tasks_done ?? 0;
                 const total = (a.tasks_done ?? 0) + (a.tasks_failed ?? 0) + (a.tasks_pending ?? 0) + (a.tasks_in_progress ?? 0);
-                const maxVal = Math.max(total, 1);
+                const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+                const color = pct >= 80 ? 'var(--success)' : pct >= 50 ? 'var(--warning)' : 'var(--danger)';
                 return (
-                  <div key={a.id} className="throughput-row">
-                    <div className="throughput-label" title={a.name}>{a.name}</div>
-                    <div className="throughput-track">
-                      <div className="throughput-done-fill" style={{ width: `${(done / maxVal) * 100}%` }}>
-                        {done > 0 && done}
-                      </div>
-                      {a.tasks_failed > 0 && (
-                        <div className="throughput-fail-fill" style={{ width: `${((a.tasks_failed ?? 0) / maxVal) * 100}%` }} />
-                      )}
+                  <div key={a.id} className="project-bar-row">
+                    <div className="project-bar-label" title={a.name}>{a.name}</div>
+                    <div className="project-bar-track">
+                      <div className="project-bar-fill" style={{ width: `${pct}%`, background: color }} />
                     </div>
-                    <div className="throughput-count">{total > 0 ? `${done}/${total}` : '—'}</div>
+                    <div className="project-bar-count">{total > 0 ? `${done}/${total}` : '—'}</div>
                   </div>
                 );
               })}
