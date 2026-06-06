@@ -250,7 +250,7 @@ export default function DashboardPage() {
           {/* Agent Throughput */}
           <div className="panel">
             <div className="panel-header">
-              <h2>⚡ Agent Throughput</h2>
+              <h2>🤖 Agents</h2>
             </div>
             <div className="overflow-y-auto" style={{ maxHeight: 320 }}>
               {dash?.agents?.length === 0 && <div className="empty-state text-sm">No agents yet</div>}
