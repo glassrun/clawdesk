@@ -236,40 +236,13 @@ export default function DashboardPage() {
 
       {/* ── Row 1: Main stats ── */}
       <div className="stats-grid">
-        <StatCard label="Total Agents"   value={stats?.agents   ?? dash?.agents?.length   ?? 0} icon="⚡" colorClass="blue"   />
-        <StatCard label="Active Tasks"   value={dash?.active_tasks    ?? 0}                     icon="🔴" colorClass="red"    />
-        <StatCard label="Completed"      value={completed}           icon="✅" colorClass="green"  />
-        <StatCard label="Failed"         value={failed}              icon="❌" colorClass="red"    />
+        <StatCard label="Active Tasks" value={dash?.active_tasks ?? 0} icon="🔴" colorClass="red" />
+        <StatCard label="Failed"      value={failed}             icon="❌" colorClass="red" />
+        <StatCard label="DB Size" value={stats?.db_size_bytes != null ? formatBytes(stats.db_size_bytes) : "—"} icon="💾" colorClass="purple" />
+        <StatCard label="Uptime"     value={uptimeFromMs(uptimeMs)} icon="🕐" colorClass="blue" />
       </div>
 
-      {/* ── Row 2: Secondary stats ── */}
-      <div className="stats-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
-        <StatCard
-          label="DB Size"
-          value={stats?.db_size_bytes != null ? formatBytes(stats.db_size_bytes) : "—"}
-          icon="💾" colorClass="purple"
-        />
-        <StatCard
-          label="Uptime"
-          value={uptimeFromMs(uptimeMs)}
-          icon="🕐" colorClass="blue"
-        />
-        <StatCard
-          label="Success Rate"
-          value={`${successRate}%`}
-          icon="📊" colorClass={successRate >= 80 ? "green" : successRate >= 50 ? "purple" : "red"}
-        />
-        <StatCard
-          label="Schema Version"
-          value={stats?.schema_version ?? "—"}
-          icon="🔧" colorClass="blue"
-        />
-      </div>
-
-      {/* ── Row 3 / 4: Task Status embedded in Column 3 below ── */}
-
-      {/* ── Row 4: Task Success Rate | Projects | Live Activity (3 columns) ── */}
-      {/* ── Masonry: 3 columns, blocks stack independently ── */}
+      {/* ── Row 2: 4-column layout ── */}
       <div className="dash-cols">
 
         {/* Column 1: Agent-focused */}
@@ -301,37 +274,6 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Agents */}
-          <div className="panel mt-4">
-            <div className="panel-header">
-              <h2>🤖 Agents <span className="text-muted text-sm font-normal">({dash?.agents?.length ?? 0})</span></h2>
-            </div>
-            <div className="table-wrap overflow-y-auto" style={{ maxHeight: 280, minWidth: 0 }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Status</th>
-                    <th>Done</th>
-                    <th>Fail</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dash?.agents?.length === 0 && (
-                    <tr><td colSpan={4} className="empty-state">No agents yet</td></tr>
-                  )}
-                  {dash?.agents?.map((a: any) => (
-                    <tr key={a.id}>
-                      <td className="font-medium">{a.name}</td>
-                      <td><span className={`badge status-${a.status}`}>{a.status}</span></td>
-                      <td className="text-center text-green text-sm">{a.tasks_done ?? 0}</td>
-                      <td className="text-center text-red text-sm">{a.tasks_failed ?? 0}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
         </div>
 
         {/* Column 2: Project-focused */}
@@ -394,24 +336,8 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Column 3: System status */}
+        {/* Column 3: Task Status */}
         <div className="flex flex-col gap-5">
-          {/* Task Success Rate */}
-          <div className="chart-card mt-4">
-            <div className="chart-title">Task Success Rate</div>
-            <div className="progress-header">
-              <span className="progress-pct" style={{ color: getSuccessColor(successRate) }}>{successRate}%</span>
-            </div>
-            <div className="progress-bar" style={{ marginTop: 8 }}>
-              <div className="progress-fill" style={{ width: `${successRate}%`, background: getProgressGradient(successRate) }} />
-            </div>
-            <div className="progress-footer" style={{ marginTop: 6 }}>
-              <span className="text-green">{completed} OK</span>
-              <span className="text-muted">{total} total</span>
-              <span className="text-red">{failed} fail</span>
-            </div>
-          </div>
-
           {/* Task Status */}
           <div className="chart-card mt-4">
             <div className="chart-title">Task Status</div>
