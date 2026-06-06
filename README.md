@@ -1,10 +1,8 @@
 # ClawDesk — AI Agent Orchestration Platform
 
-![ClawDesk](docs/lobsters_working_desk.png)
+![ClawDesk](docs/screenshot.png)
 
 Manage your OpenClaw agent teams from a single dashboard. Define projects, assign tasks, track progress, and let agents work autonomously on heartbeats. Works on desktop and mobile.
-
-![ClawDesk Screenshot](docs/screenshot.png)
 
 ## Quick Start
 
@@ -48,7 +46,32 @@ The frontend reads two values from `frontend/.env.local`:
 | `NEXT_PUBLIC_API_URL` | Backend API URL (e.g. `http://192.168.1.100:3777`) |
 | `ALLOWED_ORIGINS` | Comma-separated hosts allowed to access the dev server (e.g. `192.168.1.100,localhost`) |
 
-Copy `.env.local.example` to `.env.local` and update the IP to match your machine. This avoids hardcoding IPs in `next.config.js`.
+Copy `.env.local.example` to `.env.local` and update the IP to match your machine.
+
+## Features
+
+### Dashboard
+Four live panels: **Agents** (throughput bar), **Projects** (completion bars), **Tasks** (status stacked bar), **Live Activity** (real-time SSE feed).
+
+### Projects
+Create projects with optional **agent auto-creation** — when enabled, the executor prompt tells agents they can spawn sub-agents for parallel or specialized work.
+
+### Tasks
+- Assign to specific agents or leave unassigned for any agent to pick up
+- Chain with `dependency_ids` for ordered execution
+- Priority: low / medium / high
+- Recurring tasks respawn automatically after completion
+- Failed tasks auto-retry after 15-minute cooldown (max 3 attempts)
+- Full input/output visible in task results panel
+
+### Agent Auto-Creation
+Projects with `creates_agent` enabled tell the executor prompt that sub-agents can be spawned via `POST /api/agents`. Agents create sub-agents when a task would benefit from parallel or specialized attention. Sub-agents are picked up by the scheduler automatically.
+
+### Heartbeat Engine
+- Ticks every second — wakes agents, they pull their own tasks
+- Auto-resets stuck tasks (in_progress > 10 min → pending)
+- Auto-retries failed tasks
+- Dispatches recurring tasks on schedule
 
 ## Project Structure
 
@@ -57,25 +80,16 @@ clawdesk/
   backend/           # Node.js + Express API server
     server.js        # Entry point
     db.js            # SQLite with migrations
-    routes/          # API route handlers
-    services/        # Heartbeat engine, task executor
+    routes/          # API route handlers (agents, tasks, projects, stream, system)
+    services/        # Heartbeat engine, task executor, scheduler
     lib/             # Task handoff parsing
     data/            # SQLite database file
     public/          # Static files
   frontend/          # Next.js dashboard (responsive, mobile-friendly)
+    src/app/         # Pages: dashboard, agents, projects, tasks, billing, system
   docs/              # Architecture docs
   skills/            # OpenClaw skill references
 ```
-
-## What It Does
-
-ClawDesk is the orchestration layer on top of OpenClaw. It doesn't replace OpenClaw — it coordinates it.
-
-- **Projects** organize work into logical groups with workspace paths
-- **Tasks** are individual units of work assigned to OpenClaw agents
-- **Heartbeats** dispatch pending tasks to agents automatically every second
-- **Dependencies** ensure tasks execute in the right order (with circular dependency detection)
-- **Agent coordination** — agents can create new tasks and delegate to other agents
 
 ## Architecture
 
@@ -89,13 +103,19 @@ ClawDesk is the orchestration layer on top of OpenClaw. It doesn't replace OpenC
 ┌────────────────────────────────────────────────────────────────┐
 │  LAYER 2: Task Queue (pull-based scheduling)                   │
 │  Tasks addressed to specific agents — not broadcast             │
-│  Agents pull their own tasks on heartbeat tick                 │
+│  Agents pull their own tasks on heartbeat tick                │
 └────────────────────────────────────────────────────────────────┘
                               ↓
 ┌────────────────────────────────────────────────────────────────┐
-│  LAYER 3: Heartbeat Engine (1-second tick)                     │
-│  Wakes agents — does not assign or dispatch                     │
+│  LAYER 3: Heartbeat Engine (1-second tick)                    │
+│  Wakes agents — does not assign or dispatch                    │
 │  Auto-resets stuck tasks, auto-retries failed tasks            │
+└────────────────────────────────────────────────────────────────┘
+                              ↓
+┌────────────────────────────────────────────────────────────────┐
+│  LAYER 4: Agent Auto-Creation (optional, per-project)          │
+│  Agents spawn sub-agents at runtime via API                    │
+│  Scheduler picks up new agents automatically                   │
 └────────────────────────────────────────────────────────────────┘
 ```
 
@@ -107,10 +127,4 @@ ClawDesk is the orchestration layer on top of OpenClaw. It doesn't replace OpenC
 
 3. **Dynamic task tree** — agents can spawn sub-agents and create tasks for other agents at runtime, growing the work graph dynamically.
 
-### Heartbeat behavior
-
-- Runs every 1 second
-- Wakes agents — does not assign or dispatch
-- Auto-resets stuck tasks (in_progress > 10 minutes → pending)
-- Auto-retries failed tasks (15 minute cooldown, max 3 attempts)
-- Recurring tasks respawn automatically after completion
+4. **Per-project agent creation** — opt-in per project via the `creates_agent` checkbox at project creation time.
