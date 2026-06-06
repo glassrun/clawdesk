@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 
-export async function POST() {
+export async function GET() {
   try {
     const response = await fetch('http://localhost:3777/api/agents/sync', {
-      method: 'POST',
+      method: 'GET',
       signal: AbortSignal.timeout(120000)
     });
     const data = await response.json();

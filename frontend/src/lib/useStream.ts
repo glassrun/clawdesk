@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { API_BASE } from "./api";
 
-export type StreamEvent = "tasks" | "heartbeat" | "connected" | "agents" | "projects" | "task_output" | "task_done";
+export type StreamEvent = "tasks" | "heartbeat" | "connected" | "agents" | "projects" | "task_output" | "task_done" | "task_pickup";
 
 export interface StreamMessage {
   event: StreamEvent;
@@ -28,6 +28,7 @@ export function useStream() {
     const onProjects = (e: MessageEvent) => setLastMessage({ event: "projects", data: JSON.parse(e.data), ts: Date.now() });
     const onTaskOutput = (e: MessageEvent) => setLastMessage({ event: "task_output", data: JSON.parse(e.data), ts: Date.now() });
     const onTaskDone = (e: MessageEvent) => setLastMessage({ event: "task_done", data: JSON.parse(e.data), ts: Date.now() });
+    const onTaskPickup = (e: MessageEvent) => setLastMessage({ event: "task_pickup", data: JSON.parse(e.data), ts: Date.now() });
 
     es.addEventListener("connected", onConnected);
     es.addEventListener("tasks", onTasks);
@@ -36,6 +37,7 @@ export function useStream() {
     es.addEventListener("projects", onProjects);
     es.addEventListener("task_output", onTaskOutput);
     es.addEventListener("task_done", onTaskDone);
+    es.addEventListener("task_pickup", onTaskPickup);
     es.onerror = () => setConnected(false);
 
     return () => {
@@ -46,6 +48,7 @@ export function useStream() {
       es.removeEventListener("projects", onProjects);
       es.removeEventListener("task_output", onTaskOutput);
       es.removeEventListener("task_done", onTaskDone);
+      es.removeEventListener("task_pickup", onTaskPickup);
       es.close();
       setConnected(false);
     };

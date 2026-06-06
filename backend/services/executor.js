@@ -194,10 +194,10 @@ async function executeTask(agent, task, overrideRetry) {
     message += `\nProject: ${project.title} - ${project.description}`;
   }
   if (project?.creates_agent) {
-    message += `\n\n--- AGENT AUTO-CREATION ENABLED ---\n`;
-    message += `This project has agent auto-creation enabled. You MUST create an agent for this project via HTTP POST: ${BASE_URL}/api/agents`;
+    message += `\n\n--- AGENT AUTO-CREATION ---\n`;
+    message += `This project supports agent auto-creation. If the task requires a dedicated agent (e.g., long-running, specialized, or parallel work), create one via HTTP POST: ${BASE_URL}/api/agents`;
     message += `\nBody (JSON): { "job_title": "<choose a suitable name>", "job_description": "Agent for project: ${project.title}" }`;
-    message += `\nThe created agent will be picked up automatically by the scheduler. Do NOT proceed with this task until the agent creation call returns successfully.`;
+    message += `\nThe created agent will be picked up automatically by the scheduler. Only create an agent when genuinely needed — do not create one speculatively.`;
     message += `\n--- END AGENT AUTO-CREATION ---\n`;
   }
   message += `\n\n--- TASK DELEGATION (CRITICAL) ---`;
@@ -293,12 +293,9 @@ Task: ${task.title}`;
       cost:          0,
       tools_used: JSON.stringify(toolsUsed),
     };
-    if (createdAgentInfo) resultObj.created_agent = createdAgentInfo;
     results.push(resultObj);
     db.saveTaskResults(results);
-    const ret = { action: 'failed', task_id: task.id, task_title: task.title, agent_id: agent.openclaw_agent_id, error: executionError.message };
-    if (createdAgentInfo) ret.created_agent = createdAgentInfo;
-    return ret;
+    return { action: 'failed', task_id: task.id, task_title: task.title, agent_id: agent.openclaw_agent_id, error: executionError.message };
   }
 
   // Success path
@@ -356,10 +353,7 @@ Task: ${task.title}`;
     cost:          usage.estimatedCostUsd,
     tools_used: JSON.stringify(toolsUsed),
   };
-  if (createdAgentInfo) resultObj.created_agent = createdAgentInfo;
   results.push(resultObj);
   db.saveTaskResults(results);
-  const ret = { action: 'completed', task_id: task.id, task_title: task.title, agent_id: agent.openclaw_agent_id };
-  if (createdAgentInfo) ret.created_agent = createdAgentInfo;
-  return ret;
+  return { action: 'completed', task_id: task.id, task_title: task.title, agent_id: agent.openclaw_agent_id };
 }

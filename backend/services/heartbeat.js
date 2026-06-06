@@ -227,10 +227,10 @@ async function runHeartbeatCycle() {
     }
 
     results = await Promise.all(heartbeatPromises);
-    if (_broadcastSSE) _broadcastSSE('heartbeat', { results, ts: Date.now() });
     for (const hb of cycleHeartbeats) {
       db.insertHeartbeat({ agent_id: hb.agent_id, triggered_at: hb.triggered_at, action_taken: JSON.stringify(hb.action_taken), status: hb.status });
     }
+    if (_broadcastSSE) _broadcastSSE('heartbeat', { results, ts: Date.now() });
     return results;
   } finally {
     heartbeatRunning = false;
@@ -270,7 +270,6 @@ function startHeartbeatEngine() {
       const r = await runHeartbeatCycle();
       if (r && r.length > 0) {
         console.log(`[Heartbeat cycle] ${r.map(x => `${x.agent}→${x.action}`).join(', ')}`);
-        if (_broadcastSSE) _broadcastSSE('heartbeat', { results: r, ts: Date.now() });
       }
     } catch (e) { console.error('[Heartbeat cycle]', e.message); }
   }, 30000);

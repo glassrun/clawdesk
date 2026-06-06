@@ -161,6 +161,7 @@ export default function AgentsPage() {
                   <th className="p-3">Last Seen</th>
                   <th className="p-3">Budget</th>
                   <th className="p-3">Total Cost</th>
+                  <th className="p-3">Heartbeat</th>
                   <th className="p-3">Actions</th>
                 </tr>
               </thead>
@@ -183,6 +184,17 @@ export default function AgentsPage() {
                       </td>
                       <td className="p-3 text-xs font-mono text-muted">
                         {a.total_cost_usd != null ? `$${a.total_cost_usd.toFixed(4)}` : '—'}
+                      </td>
+                      <td className="p-3 text-xs">
+                        {a.heartbeat_enabled ? (
+                          <span className="text-green">●</span>
+                        ) : (
+                          <span className="text-muted">○</span>
+                        )}
+                        {' '}
+                        <span className="text-muted">
+                          {a.heartbeat_enabled ? `${a.heartbeat_interval}s` : 'off'}
+                        </span>
                       </td>
                       <td className="p-3">
                         <div className="flex gap-1">

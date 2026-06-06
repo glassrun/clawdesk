@@ -142,7 +142,6 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
       template_source_id: source.id,
       created_at: now,
       workspace_path: ws,
-      creates_agent: 0,
     };
     projects.push(newProject);
     db.saveProjects(projects);
@@ -295,7 +294,6 @@ module.exports = function(router, { db, broadcastSSE, setTaskStatus, nextId }) {
       assigned_agent_id: assignedId,
       title, description: description || '',
       status: 'pending', dependency_ids: depIds ? JSON.stringify(depIds) : null,
-      creates_agent: null,
       created_by_agent_id: creatorAgent.id,
       priority: priority || 'medium',
       created_at: new Date().toISOString(), completed_at: null,

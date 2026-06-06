@@ -145,6 +145,7 @@ export default function DashboardPage() {
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [taskPickups, setTaskPickups] = useState<any[]>([]);
   const { lastMessage, connected } = useStream();
 
   const refreshAll = useCallback(async () => {
@@ -174,6 +175,9 @@ export default function DashboardPage() {
     if (lastMessage.event === "tasks" || lastMessage.event === "heartbeat") {
       refreshAll();
     }
+    if (lastMessage.event === "task_pickup") {
+      setTaskPickups(prev => [{ ...lastMessage.data, ts: lastMessage.ts }, ...prev].slice(0, 20));
+    }
   }, [lastMessage, refreshAll]);
 
   const completed = dash?.completed_tasks ?? 0;
@@ -192,6 +196,13 @@ export default function DashboardPage() {
 
   const recentHeartbeats = (dash?.recent_heartbeats ?? [])
     .filter((hb: any) => (hb.action_summary || '') !== 'no_pending_tasks');
+
+  // Merge pickups and heartbeats into one chronologically sorted feed (newest first)
+  const liveFeed = [
+    ...taskPickups.map(p => ({ ...p, _type: 'pickup', _ts: p.ts })),
+    ...recentHeartbeats.map(hb => ({ ...hb, _type: 'heartbeat', _ts: new Date(hb.triggered_at).getTime() || 0 }))
+  ].sort((a, b) => b._ts - a._ts);
+
 
   return (
     <div className="page-wrap">
@@ -352,6 +363,33 @@ export default function DashboardPage() {
 
         {/* Column 2: Project-focused */}
         <div className="flex flex-col gap-5">
+          {/* Project Completion */}
+          {(dash?.projects ?? []).length > 0 ? (
+            <div className="chart-card mt-4">
+              <div className="chart-title">Project Completion</div>
+              <div className="completion-bars">
+                {dash?.projects?.map((p: any) => {
+                  const pct = p.completion_pct ?? 0;
+                  const color = pct >= 80 ? 'var(--success)' : pct >= 50 ? 'var(--warning)' : 'var(--danger)';
+                  return (
+                    <div key={p.id} className="completion-row">
+                      <div className="completion-label" title={p.title}>{p.title}</div>
+                      <div className="completion-track">
+                        <div className="completion-fill" style={{ width: `${pct}%`, background: color }} />
+                      </div>
+                      <div className="completion-pct" style={{ color }}>{pct}%</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="chart-card">
+              <div className="chart-title">Project Completion</div>
+              <div className="empty-state text-sm">No projects yet</div>
+            </div>
+          )}
+
           {/* Projects */}
           <div className="panel mt-4">
             <div className="panel-header">
@@ -381,33 +419,6 @@ export default function DashboardPage() {
               </table>
             </div>
           </div>
-
-          {/* Project Completion */}
-          {(dash?.projects ?? []).length > 0 ? (
-            <div className="chart-card mt-4">
-              <div className="chart-title">Project Completion</div>
-              <div className="completion-bars">
-                {dash?.projects?.map((p: any) => {
-                  const pct = p.completion_pct ?? 0;
-                  const color = pct >= 80 ? 'var(--success)' : pct >= 50 ? 'var(--warning)' : 'var(--danger)';
-                  return (
-                    <div key={p.id} className="completion-row">
-                      <div className="completion-label" title={p.title}>{p.title}</div>
-                      <div className="completion-track">
-                        <div className="completion-fill" style={{ width: `${pct}%`, background: color }} />
-                      </div>
-                      <div className="completion-pct" style={{ color }}>{pct}%</div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : (
-            <div className="chart-card">
-              <div className="chart-title">Project Completion</div>
-              <div className="empty-state text-sm">No projects yet</div>
-            </div>
-          )}
         </div>
 
         {/* Column 3: System status */}
@@ -434,8 +445,22 @@ export default function DashboardPage() {
               <h2>📡 Live <span className="flex items-center gap-1 text-sm font-normal text-green"><span className="live-dot" />Live</span></h2>
             </div>
             <div className="activity-feed">
-              {recentHeartbeats.length === 0 && <div className="empty-state">No recent activity</div>}
-              {recentHeartbeats.map((hb: any, idx: number) => {
+              {liveFeed.length === 0 && <div className="empty-state">No recent activity</div>}
+              {liveFeed.map((item: any, idx: number) => {
+                if (item._type === 'pickup') {
+                  return (
+                    <div key={`pickup-${item.task_id ?? idx}`} className="activity-item">
+                      <div className="activity-icon agent">🎯</div>
+                      <div className="activity-body">
+                        <div className="activity-title">Agent picked up task</div>
+                        <div className="activity-meta">{item.title ?? `Task #${item.task_id}`}</div>
+                      </div>
+                      <div className="activity-time">{timeAgo(new Date(item.ts).toISOString())}</div>
+                    </div>
+                  );
+                }
+                // heartbeat item
+                const hb = item;
                 let icon = '💓', iconClass = 'heartbeat', title = hb.agent_name ?? '—', meta = '';
                 const raw = (hb.action_summary || '') as string;
                 try {
@@ -445,6 +470,7 @@ export default function DashboardPage() {
                   else if (action?.action === 'stuck_reset') { icon = '🔄'; iconClass = 'pending'; title = `${hb.agent_name ?? '—'} reset`; meta = action.title ?? ''; }
                   else if (action?.action === 'auto_retry') { icon = '↺'; iconClass = 'pending'; title = `${hb.agent_name ?? '—'} retry`; meta = `${action.title ?? ''} (${action.attempt ?? ''}/3)`; }
                   else if (action?.action === 'handoff') { icon = '🔀'; iconClass = 'agent'; title = `${hb.agent_name ?? '—'} handoff`; meta = `→ ${action.to}: ${action.title ?? ''}`; }
+                  else if (action?.action === 'task_pickup') { icon = '🎯'; iconClass = 'agent'; title = `${hb.agent_name ?? '—'} picked up task`; meta = action.title ? `→ ${action.title}` : `Task #${action.task_id}`; }
                   else { title = hb.agent_name ?? '—'; meta = typeof raw === 'string' ? raw.substring(0, 80) : ''; }
                 } catch { title = hb.agent_name ?? '—'; meta = typeof raw === 'string' ? raw.substring(0, 80) : ''; }
                 return (

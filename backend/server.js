@@ -178,6 +178,17 @@ function setTaskStatus(taskId, newStatus) {
     db.saveTasks(tasks);
     console.log(`[Recurring] Task "${t.title}" completed, created repeat run #${newTask.run_count}`);
   }
+  // Broadcast task status change to all SSE clients
+  if (sseClients.size > 0) {
+    broadcastSSE('tasks', { task: { id: t.id, status: t.status, oldStatus, assigned_agent_id: t.assigned_agent_id, title: t.title }, ts: Date.now() });
+    if (newStatus === 'in_progress' && oldStatus === 'pending') {
+      const agents = db.loadAgents();
+      const ag = agents.find(a => a.id === t.assigned_agent_id);
+      broadcastSSE('task_pickup', { task_id: t.id, title: t.title, agent_id: t.assigned_agent_id, agent_name: ag?.name || '', ts: Date.now() });
+      // Also record in heartbeats table so it persists in the feed
+      db.insertHeartbeat({ agent_id: t.assigned_agent_id, agent_name: ag?.name || '', openclaw_agent_id: ag?.openclaw_agent_id || '', triggered_at: new Date().toISOString(), action_taken: JSON.stringify({ action: 'task_pickup', task_id: t.id, title: t.title }), status: 'info' });
+    }
+  }
   return t;
 }
 
@@ -204,7 +215,7 @@ app.get('/api', (req, res) => {
     name: 'ClawDesk', version: '1.0.0',
     endpoints: {
       health: ['GET /health', 'GET /health/ready'],
-      agents: ['GET /api/agents', 'POST /api/agents', 'GET /api/agents/:id', 'PUT /api/agents/:id', 'DELETE /api/agents/:id', 'GET /api/agents/:id/stats', 'GET /api/agents/:id/tasks', 'POST /api/agents/:id/heartbeat', 'POST /api/agents/id/reactivate', 'POST /api/agents/sync'],
+      agents: ['GET /api/agents', 'POST /api/agents', 'GET /api/agents/:id', 'PUT /api/agents/:id', 'DELETE /api/agents/:id', 'GET /api/agents/:id/stats', 'GET /api/agents/:id/tasks', 'POST /api/agents/:id/heartbeat', 'POST /api/agents/id/reactivate', 'GET /api/agents/sync'],
       projects: ['GET /api/projects', 'POST /api/projects', 'GET /api/projects/:id', 'PUT /api/projects/:id', 'DELETE /api/projects/:id', 'GET /api/projects/:id/stats', 'GET /api/projects/:id/tasks', 'POST /api/projects/:id/tasks', 'POST /api/projects/:id/tasks/from-agent', 'POST /api/projects/:id/reopen'],
       tasks: ['GET /api/tasks', 'GET /api/tasks/summary', 'GET /api/tasks/:id', 'PUT /api/tasks/:id', 'DELETE /api/tasks/:id', 'GET /api/tasks/:id/results', 'GET /api/tasks/:id/history', 'GET /api/tasks/:id/chain', 'GET /api/tasks/:id/dependents', 'POST /api/tasks/:id/run', 'POST /api/tasks/:id/retry', 'POST /api/tasks/:id/cancel', 'POST /api/tasks/:id/duplicate', 'POST /api/tasks/:id/assign', 'POST /api/tasks/:id/notes', 'POST /api/tasks/bulk'],
       tools: ['GET /api/tools', 'GET /api/tools/:name', 'PATCH /api/tools/:name'],
@@ -217,7 +228,7 @@ app.get('/api', (req, res) => {
 });
 
 // Agent sync
-app.post('/api/agents/sync', async (req, res) => {
+app.get('/api/agents/sync', async (req, res) => {
   try { const r = await syncFromOpenClaw(); res.json({ ok: true, synced: r.synced, count: r.synced.length }); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

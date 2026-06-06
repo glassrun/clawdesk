@@ -57,7 +57,7 @@ export interface Task {
   dependency_ids?: string; // JSON array of task ids
   dep_titles?: { id: number; title: string }[];
   dep_title?: string; // first dependency title
-  creates_agent?: string;
+  creates_agent?: number; // 0 or 1 (agent auto-creation — project-level flag)
   created_by_agent_slug?: string;
   scheduled_at?: string;
   requires_approval?: number; // SQLite INTEGER 0/1
@@ -139,7 +139,7 @@ export async function getHeartbeats(params: Record<string, string> = {}) {
 
 export async function syncAgents() {
   // Server returns { ok, synced: [...], count } not an array
-  return api<{ ok: boolean; synced: string[]; count: number }>('/api/agents/sync', { method: 'POST' });
+  return api<{ ok: boolean; synced: string[]; count: number }>('/api/agents/sync', { method: 'GET' });
 }
 
 export async function createAgent(data: { job_title: string; job_description?: string }) {
