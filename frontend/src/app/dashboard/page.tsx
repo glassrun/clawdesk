@@ -248,8 +248,10 @@ export default function DashboardPage() {
         {/* Column 1: Agent-focused */}
         <div className="flex flex-col gap-5">
           {/* Agent Throughput */}
-          <div className="chart-card mt-4">
-            <div className="chart-title">Agent Throughput</div>
+          <div className="panel mt-4">
+            <div className="panel-header">
+              <h2>⚡ Agent Throughput</h2>
+            </div>
             <div className="throughput-bars">
               {dash?.agents?.length === 0 && <div className="empty-state text-sm">No agents yet</div>}
               {(dash?.agents ?? []).map((a: any) => {
@@ -325,8 +327,10 @@ export default function DashboardPage() {
         {/* Column 3: Task Status */}
         <div className="flex flex-col gap-5">
           {/* Task Status */}
-          <div className="chart-card mt-4">
-            <div className="chart-title">Task Status</div>
+          <div className="panel mt-4">
+            <div className="panel-header">
+              <h2>📋 Task Status</h2>
+            </div>
             {(() => {
               const byStatus = dash?.agents?.reduce((acc: any, a: any) => {
                 acc.pending = (acc.pending || 0) + (a.tasks_pending || 0);
