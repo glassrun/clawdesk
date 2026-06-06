@@ -448,12 +448,12 @@ export default function TasksPage() {
                   </tr>
                   {expandedResults === t.id && taskResults[t.id] && (
                     <tr><td colSpan={hasScheduledCol ? 11 : 10} className="p-3" style={{background: "var(--bg)"}}>
-                      <div className="text-xs max-h-40 overflow-y-auto">
+                      <div className="text-xs overflow-y-auto">
                         {taskResults[t.id].length === 0 ? <div className="text-soft">No results</div> : taskResults[t.id].map((r: any, i: number) => (
                           <div key={i} className="border-b pb-2 mb-2">
                             <div className="text-soft text-xs">{new Date(r.executed_at).toLocaleString()}</div>
-                            <div className="text-yellow-400 whitespace-pre-wrap">{r.input?.slice(0, 300)}</div>
-                            <div className="whitespace-pre-wrap">{r.output?.slice(0, 800)}</div>
+                            <div className="text-yellow-400 whitespace-pre-wrap">{r.input}</div>
+                            <div className="whitespace-pre-wrap">{r.output}</div>
                           </div>
                         ))}
                       </div>
