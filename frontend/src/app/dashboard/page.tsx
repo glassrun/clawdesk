@@ -286,40 +286,34 @@ export default function DashboardPage() {
               <h2>📁 Projects <span className="text-muted text-sm font-normal">({dash?.projects?.length ?? 0})</span></h2>
             </div>
             <div className="table-wrap overflow-y-auto" style={{ maxHeight: 320, minWidth: 0 }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Title</th>
-                    <th style={{ width: 100 }}>Completion</th>
-                    <th style={{ width: 60 }}>Tasks</th>
-                    <th style={{ width: 60 }}>Done</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dash?.projects?.length === 0 && (
-                    <tr><td colSpan={4} className="empty-state">No projects yet</td></tr>
-                  )}
-                  {dash?.projects?.map((p: any) => {
-                    const pct = p.completion_pct ?? 0;
-                    const color = pct >= 80 ? 'var(--success)' : pct >= 50 ? 'var(--warning)' : 'var(--danger)';
-                    return (
-                      <tr key={p.id}>
-                        <td className="font-medium truncate" style={{ maxWidth: 140 }} title={p.title}>{p.title}</td>
-                        <td>
-                          <div className="flex items-center gap-2">
-                            <div className="completion-track" style={{ flex: 1, height: 6 }}>
-                              <div className="completion-fill" style={{ width: `${pct}%`, background: color }} />
-                            </div>
-                            <span className="text-xs" style={{ color, minWidth: 32, textAlign: 'right' }}>{pct}%</span>
-                          </div>
-                        </td>
-                        <td className="text-center text-sm text-muted">{p.tasks_total ?? 0}</td>
-                        <td className="text-center text-sm text-green">{p.tasks_done ?? 0}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              {/* Header */}
+              <div className="flex text-xs text-muted font-medium px-2 py-1 border-b border-border">
+                <div className="flex-1 truncate">Title</div>
+                <div className="w-[100px] text-center">Completion</div>
+                <div className="w-[60px] text-center hidden sm:block">Tasks</div>
+                <div className="w-[60px] text-center hidden sm:block">Done</div>
+              </div>
+              {/* Rows */}
+              {dash?.projects?.length === 0 && (
+                <div className="empty-state px-2 py-4">No projects yet</div>
+              )}
+              {dash?.projects?.map((p: any) => {
+                const pct = p.completion_pct ?? 0;
+                const color = pct >= 80 ? 'var(--success)' : pct >= 50 ? 'var(--warning)' : 'var(--danger)';
+                return (
+                  <div key={p.id} className="flex items-center gap-2 px-2 py-2 border-b border-border hover:bg-bg-hover">
+                    <div className="flex-1 font-medium truncate" title={p.title}>{p.title}</div>
+                    <div className="w-[100px] flex items-center gap-2">
+                      <div className="completion-track" style={{ flex: 1, height: 6 }}>
+                        <div className="completion-fill" style={{ width: `${pct}%`, background: color }} />
+                      </div>
+                      <span className="text-xs" style={{ color, minWidth: 32, textAlign: 'right' }}>{pct}%</span>
+                    </div>
+                    <div className="w-[60px] text-center text-sm text-muted hidden sm:block">{p.tasks_total ?? 0}</div>
+                    <div className="w-[60px] text-center text-sm text-green hidden sm:block">{p.tasks_done ?? 0}</div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
