@@ -181,10 +181,6 @@ export default function ProjectsPage() {
                 <span className="text-xs text-muted">📋</span>
               </label>
               <label className="flex items-center gap-2 mt-2 cursor-pointer">
-                <input type="checkbox" checked={formCreatesAgentEdit} onChange={(e) => setFormCreatesAgentEdit(e.target.checked)} />
-                <span className="text-sm">🤖 Create agent for this project</span>
-              </label>
-              <label className="flex items-center gap-2 mt-2 cursor-pointer">
                 <input type="checkbox" checked={formCreatesAgent} onChange={(e) => setFormCreatesAgent(e.target.checked)} />
                 <span className="text-sm">🤖 Create agent for this project</span>
                 <span className="text-xs text-muted">agent shares project workspace</span>
