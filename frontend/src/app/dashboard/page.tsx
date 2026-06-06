@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { getDashboard, getSystemStats, type Dashboard, type SystemStats } from "@/lib/api";
 import { useStream } from "@/lib/useStream";
 
@@ -146,6 +146,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [taskPickups, setTaskPickups] = useState<any[]>([]);
+  const pickupTaskIdsRef = useRef<Set<number>>(new Set());
   const { lastMessage, connected } = useStream();
 
   const refreshAll = useCallback(async () => {
@@ -176,7 +177,9 @@ export default function DashboardPage() {
       refreshAll();
     }
     if (lastMessage.event === "task_pickup") {
-      setTaskPickups(prev => [{ ...lastMessage.data, ts: lastMessage.ts }, ...prev].slice(0, 20));
+      pickupTaskIdsRef.current.add(lastMessage.data.task_id);
+      setTaskPickups(prev => [{ ...lastMessage.data, ts: lastMessage.ts, _key: `sse-${lastMessage.data.task_id}` }, ...prev].slice(0, 20));
+      refreshAll();
     }
   }, [lastMessage, refreshAll]);
 
@@ -198,9 +201,18 @@ export default function DashboardPage() {
     .filter((hb: any) => (hb.action_summary || '') !== 'no_pending_tasks');
 
   // Merge pickups and heartbeats into one chronologically sorted feed (newest first)
+  // Deduplicate: skip heartbeat task_pickup records that already have an SSE entry (same task_id)
   const liveFeed = [
     ...taskPickups.map(p => ({ ...p, _type: 'pickup', _ts: p.ts })),
-    ...recentHeartbeats.map(hb => ({ ...hb, _type: 'heartbeat', _ts: new Date(hb.triggered_at).getTime() || 0 }))
+    ...recentHeartbeats
+      .filter(hb => {
+        try {
+          const action = (hb.action_summary || '').startsWith('{') ? JSON.parse(hb.action_summary) : {};
+          if (action.action === 'task_pickup' && pickupTaskIdsRef.current.has(action.task_id)) return false;
+        } catch {}
+        return true;
+      })
+      .map(hb => ({ ...hb, _type: 'heartbeat', _ts: new Date(hb.triggered_at).getTime() || 0 }))
   ].sort((a, b) => b._ts - a._ts);
 
 
@@ -448,12 +460,13 @@ export default function DashboardPage() {
               {liveFeed.length === 0 && <div className="empty-state">No recent activity</div>}
               {liveFeed.map((item: any, idx: number) => {
                 if (item._type === 'pickup') {
+                  const pickupTitle = item.title || (item.task_id != null ? `Task #${item.task_id}` : 'Unknown task');
                   return (
                     <div key={`pickup-${item.task_id ?? idx}`} className="activity-item">
                       <div className="activity-icon agent">🎯</div>
                       <div className="activity-body">
                         <div className="activity-title">Agent picked up task</div>
-                        <div className="activity-meta">{item.title ?? `Task #${item.task_id}`}</div>
+                        <div className="activity-meta">{pickupTitle}</div>
                       </div>
                       <div className="activity-time">{timeAgo(new Date(item.ts).toISOString())}</div>
                     </div>
@@ -470,7 +483,7 @@ export default function DashboardPage() {
                   else if (action?.action === 'stuck_reset') { icon = '🔄'; iconClass = 'pending'; title = `${hb.agent_name ?? '—'} reset`; meta = action.title ?? ''; }
                   else if (action?.action === 'auto_retry') { icon = '↺'; iconClass = 'pending'; title = `${hb.agent_name ?? '—'} retry`; meta = `${action.title ?? ''} (${action.attempt ?? ''}/3)`; }
                   else if (action?.action === 'handoff') { icon = '🔀'; iconClass = 'agent'; title = `${hb.agent_name ?? '—'} handoff`; meta = `→ ${action.to}: ${action.title ?? ''}`; }
-                  else if (action?.action === 'task_pickup') { icon = '🎯'; iconClass = 'agent'; title = `${hb.agent_name ?? '—'} picked up task`; meta = action.title ? `→ ${action.title}` : `Task #${action.task_id}`; }
+                  else if (action?.action === 'task_pickup') { icon = '🎯'; iconClass = 'agent'; title = `${hb.agent_name ?? '—'} picked up task`; meta = action.title ? `→ ${action.title}` : (action.task_id != null ? `Task #${action.task_id}` : 'Unknown task'); }
                   else { title = hb.agent_name ?? '—'; meta = typeof raw === 'string' ? raw.substring(0, 80) : ''; }
                 } catch { title = hb.agent_name ?? '—'; meta = typeof raw === 'string' ? raw.substring(0, 80) : ''; }
                 return (
