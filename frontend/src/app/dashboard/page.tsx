@@ -450,7 +450,10 @@ export default function DashboardPage() {
               <span className="text-red">{failed} fail</span>
             </div>
           </div>
+        </div>
 
+        {/* Column 4: Live Activity */}
+        <div className="flex flex-col gap-5">
           {/* Live Activity */}
           <div className="panel mt-4">
             <div className="panel-header">

@@ -811,14 +811,14 @@ hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
 /* ── Masonry / 3-column grid: blocks stack independently ── */
 .dash-cols {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   align-items: start;
   gap: 20px;
   margin-bottom: 20px;
 }
 
 /* ── Dashboard responsive ── */
-@media (max-width: 1024px) {
+@media (max-width: 1200px) {
   .dash-cols {
     grid-template-columns: repeat(2, 1fr);
   }
