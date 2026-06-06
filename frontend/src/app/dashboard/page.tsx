@@ -296,7 +296,6 @@ export default function DashboardPage() {
                 const color = pct >= 80 ? 'var(--success)' : pct >= 50 ? 'var(--warning)' : 'var(--danger)';
                 return (
                   <div key={p.id} className="project-bar-row">
-                    <div className="project-bar-label" title={p.title}>{p.title}</div>
                     <div className="project-bar-track">
                       <div className="project-bar-fill" style={{ width: `${pct}%`, background: color }} />
                     </div>
