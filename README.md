@@ -4,6 +4,8 @@
 
 Manage your OpenClaw agent teams from a single dashboard. Define projects, assign tasks, track progress, and let agents work autonomously on heartbeats. Works on desktop and mobile.
 
+![ClawDesk Screenshot](docs/screenshot.png)
+
 ## Quick Start
 
 ### 1. Clone & install
