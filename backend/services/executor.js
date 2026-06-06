@@ -197,7 +197,7 @@ async function executeTask(agent, task, overrideRetry) {
     message += `\n\n--- AGENT AUTO-CREATION ---\n`;
     message += `This project supports agent auto-creation. If the task requires a dedicated agent (e.g., long-running, specialized, or parallel work), create one via HTTP POST: ${BASE_URL}/api/agents`;
     message += `\nBody (JSON): { "job_title": "<choose a suitable name>", "job_description": "Agent for project: ${project.title}" }`;
-    message += `\nThe created agent will be picked up automatically by the scheduler. Only create an agent when genuinely needed — do not create one speculatively.`;
+    message += `\nFeel free to create sub-agents whenever a task would benefit from parallel or specialized attention. Err on the side of delegating rather than doing everything yourself.`;
     message += `\n--- END AGENT AUTO-CREATION ---\n`;
   }
   message += `\n\n--- TASK DELEGATION (CRITICAL) ---`;
