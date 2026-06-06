@@ -695,11 +695,8 @@ hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
   min-width: 0;
 }
 .chart-title {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
   margin-bottom: 16px;
 }
 
