@@ -705,6 +705,12 @@ hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
 }
 
 /* Task status donut/bar */
+.task-bar-wrap {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
 .task-bar-chart {
   display: flex;
   height: 28px;
@@ -734,6 +740,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
   gap: 16px;
   margin-top: 10px;
   flex-wrap: wrap;
+  padding-bottom: 4px;
 }
 .legend-item {
   display: flex;
