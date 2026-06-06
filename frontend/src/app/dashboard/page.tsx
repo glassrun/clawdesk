@@ -355,7 +355,7 @@ export default function DashboardPage() {
           {/* Live Activity */}
           <div className="panel">
             <div className="panel-header">
-              <h2>📡 Live <span className="flex items-center gap-1 text-sm font-normal text-green"><span className="live-dot" />Live</span></h2>
+              <h2>📡 Live</h2>
             </div>
             <div className="activity-feed">
               {liveFeed.length === 0 && <div className="empty-state">No recent activity</div>}
