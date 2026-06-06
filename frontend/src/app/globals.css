@@ -711,7 +711,6 @@ hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
   border-radius: 6px;
   overflow: hidden;
   gap: 2px;
-  padding: 16px 20px 8px;
 }
 .task-bar-segment {
   display: flex;
@@ -735,7 +734,6 @@ hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
   gap: 16px;
   margin-top: 10px;
   flex-wrap: wrap;
-  padding: 0 20px 16px;
 }
 .legend-item {
   display: flex;
