@@ -4,7 +4,26 @@
 
 ![Screenshot](docs/screenshot.png)
 
-Manage your OpenClaw agent teams from a single dashboard. Define projects, assign tasks, track progress, and let agents work autonomously on heartbeats. Works on desktop and mobile.
+**ClawDesk runs specialist agents in parallel. They share a blackboard, push back on each other, and the swarm catches what a single pass misses.**
+
+Use it when multiple interdependent decisions need to stay consistent — scientific research, game design, scenario planning, product definition, worldbuilding. One agent drafts, another spots holes, a third challenges assumptions. The blackboard is their shared reality.
+
+## What it's for
+
+ClawDesk is a multi-agent blackboard system. Specialist agents work in parallel, share a common workspace, and challenge each other's output. It's not a pipeline — it's a swarm.
+
+**Good fits:**
+- Scientific research — one agent explores, another fact-checks, a third synthesizes contradictions
+- Game design — systems, narrative, balance, and lore agents all revising against each other
+- Scenario planning — multiple analysts stress-testing the same plan from different angles
+- Product definition — competing perspectives on features, users, and constraints
+- Worldbuilding — cosmology, geography, species, and history agents keeping each other consistent
+
+**How it works:**
+1. Create a project and define specialist roles (or let agents auto-create them)
+2. Agents read/write shared workspace files — no direct messaging needed
+3. Tasks flow through a pull-based queue; agents pick up their own work on heartbeat
+4. The swarm revises and expands until consensus stabilizes
 
 ## Quick Start
 

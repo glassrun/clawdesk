@@ -186,7 +186,7 @@ async function executeTask(agent, task, overrideRetry) {
     message += `\nCRITICAL: Write ALL files to the PROJECT workspace, not your own workspace.`;
     message += `\nProject workspace: ${project.workspace_path}`;
     message += `\nUse the write tool with FULL paths: ${project.workspace_path}/[filename]`;
-    message += `\nUse the read tool to open and fully read ALL files in the ${project.workspace_path} folder. Then summarize the key information from them before starting your work.`;
+    message += `\nUse the read tool to open and fully read ALL files in the ${project.workspace_path} folder. Then summarize the key information from them before starting your work. Flag any contradictions or gaps between prior work and your new task.`;
   }
   message += `\nWhen finished, list every file you created with its path.`;
   message += `\n`;
